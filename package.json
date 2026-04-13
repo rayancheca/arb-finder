@@ -1,0 +1,17 @@
+{
+  "name": "arb-finder",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm -r --filter=./packages/* build && pnpm --filter web build",
+    "test": "pnpm --filter @arb/engine test",
+    "seed": "pnpm --filter web exec tsx ../../db/seed.ts",
+    "db:push": "pnpm --filter web exec prisma db push --schema=../../db/schema.prisma",
+    "db:studio": "pnpm --filter web exec prisma studio --schema=../../db/schema.prisma"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
+  }
+}
