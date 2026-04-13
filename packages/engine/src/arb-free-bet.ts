@@ -3,8 +3,8 @@ import {
   americanToImpliedProb,
   freeBetProfit,
   payoutWithStake,
-} from "./odds.js";
-import type { AmericanOdds, ArbResult, Side } from "./types.js";
+} from "./odds";
+import type { AmericanOdds, ArbResult, Side } from "./types";
 
 /**
  * Free-bet conversion arb. Matches the `free bet` sheet with a generalized

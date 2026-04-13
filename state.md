@@ -1,7 +1,7 @@
 # state.md
 
 ## Status
-IN PROGRESS
+SESSION 1 COMPLETE — mockup shipped with all 6 tabs functional against seed data. Engine 52/52 tests green. Build green. All routes render 200 with real content.
 
 ## Project
 arb-finder — cross-book sportsbook arbitrage + promo-boost finder with Kelly bankroll optimization and personal P&L analytics
@@ -28,25 +28,19 @@ Done — `pnpm install` succeeds, `pnpm --filter web dev` boots a blank Next app
 - Wrote full `CLAUDE.md` spec
 
 ## In progress
-Scaffolding monorepo files (package.json, pnpm-workspace.yaml, Next app, engine package, Prisma schema)
+Nothing — session 1 complete. Ready to start session 2 (real scrapers) when you are.
 
-## Next steps
-1. Write root `package.json` + `pnpm-workspace.yaml` + `.gitignore` + `tsconfig.base.json`
-2. Scaffold `apps/web` manually (package.json, next.config, tsconfig, tailwind, postcss, app/layout.tsx, app/globals.css) rather than running `create-next-app` to keep full control
-3. Scaffold `packages/engine` with tsup + vitest
-4. Write `db/schema.prisma` with full data model
-5. `pnpm install` at root
-6. `pnpm --filter @arb/engine test` (expect empty pass)
-7. `pnpm --filter web dev` smoke test
-8. Commit: "chore: scaffold monorepo"
-9. Build engine Phase 1 — odds math + 4 arb functions + tests with Excel-parity fixtures
-10. Commit: "feat(engine): arb math with Excel-parity tests"
-11. Write `db/seed.ts` with books, events, markets, selections, historical bets, engineered arb opps
-12. Build design tokens + UI primitives
-13. Build dashboard + detail + search + boosts pages
-14. Build analytics tab with seed P&L charts
-15. Build bankroll tab with Kelly + risk of ruin
-16. Final `pnpm build`, smoke test, commit, push, `gh repo create`
+## Next steps (session 2)
+1. Create `apps/worker/` with Python 3.12 + httpx + playwright
+2. Build first scraper: DraftKings public JSON endpoint (sportsbook.draftkings.com/sites/US-NY-SB/api/v5/eventgroups/*)
+3. Event matcher — canonical key hashing + team alias tables + fuzzy commence_time match within ±15 min
+4. Wire scraper → Prisma write path → arb recomputation → UI
+5. Add FanDuel, BetMGM, Caesars, BetRivers scrapers (same pattern, copy-and-adapt)
+6. APScheduler task running every 5 minutes
+7. bet365 + Fanatics + ESPN BET via Playwright (flaky, lowest priority)
+8. Browser extension for bet-slip autofill
+9. Excel history import → replaces seeded historical bets with real data
+10. Deploy: Vercel (web) + Neon (Postgres) + Railway (Python worker)
 
 ## Decisions log
 - **No create-next-app** — hand-scaffolded to avoid template cruft and retain full control over every file

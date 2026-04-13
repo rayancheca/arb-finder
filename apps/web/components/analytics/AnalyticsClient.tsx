@@ -1,0 +1,439 @@
+"use client";
+
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
+import { StatBlock } from "@/components/ui/StatBlock";
+import { Sparkline } from "@/components/ui/Sparkline";
+import { formatMoney, formatMoneyShort, formatPct } from "@/lib/format";
+import { cn } from "@/lib/cn";
+
+interface BetRow {
+  id: string;
+  bookId: string;
+  stake: number;
+  profit: number;
+  result: string;
+  boostType: string;
+  placedAt: string; // ISO
+}
+
+interface BookLite {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface Props {
+  readonly bets: ReadonlyArray<BetRow>;
+  readonly books: ReadonlyArray<BookLite>;
+}
+
+const AXIS = {
+  stroke: "var(--border)",
+  fontSize: 10,
+  fontFamily: "var(--font-mono)",
+  tick: { fill: "var(--text-faint)" },
+};
+
+export function AnalyticsClient({ bets, books }: Props) {
+  const bookById = new Map(books.map((b) => [b.id, b]));
+
+  const totalProfit = bets.reduce((a, b) => a + b.profit, 0);
+  const totalStaked = bets.reduce((a, b) => a + b.stake, 0);
+  const won = bets.filter((b) => b.result === "won").length;
+  const lost = bets.filter((b) => b.result === "lost").length;
+  const winRate = bets.length > 0 ? won / bets.length : 0;
+  const roi = totalStaked > 0 ? totalProfit / totalStaked : 0;
+  const avgBetSize = bets.length > 0 ? totalStaked / bets.length : 0;
+
+  // Bankroll curve
+  const sorted = [...bets].sort(
+    (a, b) => new Date(a.placedAt).getTime() - new Date(b.placedAt).getTime(),
+  );
+  let running = 8000;
+  const bankrollSeries = sorted.map((b) => {
+    running += b.profit;
+    return {
+      t: new Date(b.placedAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      }),
+      bankroll: running,
+    };
+  });
+  if (bankrollSeries.length > 0) {
+    bankrollSeries.unshift({ t: "start", bankroll: 8000 });
+  }
+
+  // Profit by book
+  const profitByBook = books
+    .map((b) => {
+      const bookBets = bets.filter((x) => x.bookId === b.id);
+      const p = bookBets.reduce((a, x) => a + x.profit, 0);
+      const s = bookBets.reduce((a, x) => a + x.stake, 0);
+      return {
+        name: b.name,
+        color: b.color,
+        profit: Number(p.toFixed(2)),
+        roi: s > 0 ? p / s : 0,
+        count: bookBets.length,
+      };
+    })
+    .sort((a, b) => b.profit - a.profit);
+
+  // Profit by boost type
+  const boostTypes = ["standard", "free_bet", "no_sweat", "site_credit"];
+  const profitByBoost = boostTypes.map((t) => {
+    const sub = bets.filter((b) => b.boostType === t);
+    const profit = sub.reduce((a, b) => a + b.profit, 0);
+    return {
+      name:
+        t === "standard"
+          ? "Standard"
+          : t === "free_bet"
+            ? "Free Bet"
+            : t === "no_sweat"
+              ? "No Sweat"
+              : "Site Credit",
+      profit: Number(profit.toFixed(2)),
+      count: sub.length,
+    };
+  });
+
+  // Bet size histogram
+  const sizeBuckets = [
+    { label: "<$50", min: 0, max: 49 },
+    { label: "$50", min: 50, max: 99 },
+    { label: "$100", min: 100, max: 149 },
+    { label: "$150", min: 150, max: 249 },
+    { label: "$250", min: 250, max: 499 },
+    { label: "$500", min: 500, max: 749 },
+    { label: "$750", min: 750, max: 999 },
+    { label: "$1k+", min: 1000, max: Infinity },
+  ];
+  const histogram = sizeBuckets.map((b) => ({
+    label: b.label,
+    count: bets.filter((x) => x.stake >= b.min && x.stake <= b.max).length,
+  }));
+
+  // Day-hour heatmap
+  const heatmap: number[][] = Array.from({ length: 7 }, () =>
+    Array.from({ length: 24 }, () => 0),
+  );
+  for (const b of bets) {
+    const d = new Date(b.placedAt);
+    const day = d.getDay();
+    const hour = d.getHours();
+    const row = heatmap[day];
+    if (row) row[hour] = (row[hour] ?? 0) + b.profit;
+  }
+  const maxAbs = Math.max(
+    ...heatmap.flat().map((v) => Math.abs(v)),
+    1,
+  );
+
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  return (
+    <div className="mx-auto max-w-[1320px] px-6 py-6">
+      <div className="mb-5">
+        <h1 className="text-[28px] font-semibold tracking-tighter">
+          Analytics
+        </h1>
+        <p className="mt-2 text-[13px] text-text-dim">
+          Your last 60 days · {bets.length} bets placed ·{" "}
+          <span className="mono-num text-text">
+            {formatMoneyShort(totalStaked)}
+          </span>{" "}
+          total wagered
+        </p>
+      </div>
+
+      {/* KPI grid */}
+      <div className="mb-5 grid grid-cols-6 gap-4">
+        <StatBlock
+          label="Profit"
+          value={formatMoney(totalProfit, { sign: true })}
+          deltaTone={totalProfit >= 0 ? "profit" : "loss"}
+          sparkline={
+            <Sparkline
+              data={bankrollSeries.map((d) => d.bankroll)}
+              color={totalProfit >= 0 ? "var(--profit)" : "var(--loss)"}
+            />
+          }
+        />
+        <StatBlock
+          label="ROI"
+          value={formatPct(roi, 1)}
+          deltaTone={roi >= 0 ? "profit" : "loss"}
+          delta={`${formatMoneyShort(totalStaked)} staked`}
+        />
+        <StatBlock
+          label="Win rate"
+          value={formatPct(winRate, 1)}
+          delta={`${won}w · ${lost}l`}
+          deltaTone="neutral"
+        />
+        <StatBlock
+          label="Bets"
+          value={bets.length.toString()}
+          delta={`${formatMoney(avgBetSize, { sign: false })} avg`}
+          deltaTone="neutral"
+        />
+        <StatBlock
+          label="Best day"
+          value={formatMoney(
+            Math.max(...bankrollSeries.map((d, i, arr) => {
+              if (i === 0) return 0;
+              return d.bankroll - (arr[i - 1]?.bankroll ?? 0);
+            })),
+          )}
+          deltaTone="profit"
+        />
+        <StatBlock
+          label="Worst day"
+          value={formatMoney(
+            Math.min(...bankrollSeries.map((d, i, arr) => {
+              if (i === 0) return 0;
+              return d.bankroll - (arr[i - 1]?.bankroll ?? 0);
+            })),
+          )}
+          deltaTone="loss"
+        />
+      </div>
+
+      {/* Bankroll curve — full width */}
+      <SurfaceCard
+        title="Bankroll curve"
+        subtitle="60 days · starting $8,000"
+        className="mb-5"
+      >
+        <div className="h-64 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart
+              data={bankrollSeries}
+              margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="gBank" x1="0" y1="0" x2="0" y2="1">
+                  <stop
+                    offset="0%"
+                    stopColor="var(--profit)"
+                    stopOpacity={0.3}
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor="var(--profit)"
+                    stopOpacity={0}
+                  />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                stroke="var(--border)"
+                strokeDasharray="2 4"
+                vertical={false}
+              />
+              <XAxis dataKey="t" {...AXIS} />
+              <YAxis
+                {...AXIS}
+                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "var(--surface-raised)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  fontSize: 11,
+                  fontFamily: "var(--font-mono)",
+                }}
+                labelStyle={{ color: "var(--text-faint)" }}
+                formatter={(v: number) => [formatMoney(v), "bankroll"]}
+              />
+              <Area
+                type="monotone"
+                dataKey="bankroll"
+                stroke="var(--profit)"
+                strokeWidth={2}
+                fill="url(#gBank)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </SurfaceCard>
+
+      {/* 2/3 + 1/3 row */}
+      <div className="mb-5 grid grid-cols-3 gap-5">
+        <SurfaceCard
+          title="Profit by book"
+          subtitle="60-day realized P&L"
+          className="col-span-2"
+        >
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={profitByBook}
+                margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+              >
+                <CartesianGrid
+                  stroke="var(--border)"
+                  strokeDasharray="2 4"
+                  vertical={false}
+                />
+                <XAxis dataKey="name" {...AXIS} />
+                <YAxis
+                  {...AXIS}
+                  tickFormatter={(v) => `$${v}`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--surface-raised)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    fontSize: 11,
+                    fontFamily: "var(--font-mono)",
+                  }}
+                  formatter={(v: number) => [formatMoney(v), "profit"]}
+                />
+                <Bar dataKey="profit" radius={[3, 3, 0, 0]}>
+                  {profitByBook.map((b) => (
+                    <Cell
+                      key={b.name}
+                      fill={
+                        b.profit >= 0 ? "var(--profit)" : "var(--loss)"
+                      }
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </SurfaceCard>
+
+        <SurfaceCard title="Profit by boost type">
+          <div className="flex flex-col gap-3">
+            {profitByBoost.map((b) => {
+              const max = Math.max(
+                ...profitByBoost.map((x) => Math.abs(x.profit)),
+                1,
+              );
+              const width = (Math.abs(b.profit) / max) * 100;
+              return (
+                <div key={b.name}>
+                  <div className="mb-1 flex items-center justify-between text-[11px]">
+                    <span className="text-text-dim">{b.name}</span>
+                    <span
+                      className={cn(
+                        "mono-num font-semibold",
+                        b.profit >= 0 ? "text-profit" : "text-loss",
+                      )}
+                    >
+                      {formatMoney(b.profit, { sign: true })}
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-surface-sunken">
+                    <div
+                      className={cn(
+                        "h-full rounded-full",
+                        b.profit >= 0 ? "bg-profit" : "bg-loss",
+                      )}
+                      style={{ width: `${width}%` }}
+                    />
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-text-faint">
+                    {b.count} bets
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </SurfaceCard>
+      </div>
+
+      <div className="mb-5 grid grid-cols-3 gap-5">
+        <SurfaceCard
+          title="Bet size distribution"
+          className="col-span-1"
+        >
+          <div className="h-56 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={histogram}
+                margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
+              >
+                <CartesianGrid
+                  stroke="var(--border)"
+                  strokeDasharray="2 4"
+                  vertical={false}
+                />
+                <XAxis dataKey="label" {...AXIS} />
+                <YAxis {...AXIS} />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--surface-raised)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    fontSize: 11,
+                  }}
+                />
+                <Bar dataKey="count" fill="var(--accent)" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </SurfaceCard>
+
+        <SurfaceCard title="Day × Hour heatmap" className="col-span-2">
+          <div className="flex flex-col gap-1">
+            <div className="ml-8 grid grid-cols-24 gap-px text-[8px] text-text-faint">
+              {Array.from({ length: 24 }).map((_, h) => (
+                <div
+                  key={h}
+                  className="mono-num text-center"
+                  style={{ width: 18 }}
+                >
+                  {h % 4 === 0 ? h : ""}
+                </div>
+              ))}
+            </div>
+            {heatmap.map((row, day) => (
+              <div key={day} className="flex items-center gap-1">
+                <div className="w-7 text-[10px] text-text-faint">
+                  {DAYS[day]}
+                </div>
+                <div className="flex gap-px">
+                  {row.map((val, h) => {
+                    const intensity = Math.abs(val) / maxAbs;
+                    const color =
+                      val > 0
+                        ? `rgba(110, 214, 155, ${0.15 + intensity * 0.75})`
+                        : val < 0
+                          ? `rgba(240, 120, 100, ${0.15 + intensity * 0.75})`
+                          : "var(--surface-sunken)";
+                    return (
+                      <div
+                        key={h}
+                        title={`${DAYS[day]} ${h}:00 — ${formatMoney(val, { sign: true })}`}
+                        className="h-[18px] w-[18px] rounded-[2px]"
+                        style={{ background: color }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </SurfaceCard>
+      </div>
+    </div>
+  );
+}

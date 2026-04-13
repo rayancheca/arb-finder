@@ -2,8 +2,8 @@ import {
   americanToDecimal,
   americanToImpliedProb,
   payoutWithStake,
-} from "./odds.js";
-import type { AmericanOdds, ArbResult } from "./types.js";
+} from "./odds";
+import type { AmericanOdds, ArbResult } from "./types";
 
 /**
  * Standard 2-way arbitrage. Matches the `calc` sheet.

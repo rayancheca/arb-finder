@@ -1,4 +1,4 @@
-import type { AmericanOdds } from "./types.js";
+import type { AmericanOdds } from "./types";
 
 /**
  * American odds → decimal payout multiplier.

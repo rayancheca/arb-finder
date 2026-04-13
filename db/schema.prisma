@@ -1,0 +1,164 @@
+// arb-finder data model
+// SQLite locally, Postgres in prod — swap via DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Sport {
+  id     String  @id
+  key    String  @unique
+  title  String
+  events Event[]
+}
+
+model Book {
+  id              String            @id
+  key             String            @unique
+  name            String
+  color           String
+  active          Boolean           @default(true)
+  region          String            @default("US-NY")
+  selections      Selection[]
+  boosts          Boost[]
+  bankrollEntries BankrollEntry[]
+  arbOppsAsA      ArbOpp[]          @relation("ArbBookA")
+  arbOppsAsB      ArbOpp[]          @relation("ArbBookB")
+  bets            Bet[]
+}
+
+model Event {
+  id            String    @id
+  sportId       String
+  sport         Sport     @relation(fields: [sportId], references: [id])
+  homeTeam      String
+  awayTeam      String
+  commenceTime  DateTime
+  canonicalKey  String    @unique
+  markets       Market[]
+  arbOpps       ArbOpp[]
+  bets          Bet[]
+  createdAt     DateTime  @default(now())
+
+  @@index([commenceTime])
+  @@index([sportId])
+}
+
+model Market {
+  id         String      @id
+  eventId    String
+  event      Event       @relation(fields: [eventId], references: [id])
+  type       String      // moneyline | spread | total | prop_2way
+  line       Float?      // null for moneyline; point spread or total line otherwise
+  selections Selection[]
+  arbOpps    ArbOpp[]
+  bets       Bet[]
+
+  @@index([eventId])
+}
+
+model Selection {
+  id            String   @id
+  marketId      String
+  market        Market   @relation(fields: [marketId], references: [id])
+  bookId        String
+  book          Book     @relation(fields: [bookId], references: [id])
+  side          String   // "home" | "away" | "over" | "under" | label
+  label         String
+  americanOdds  Float
+  maxStake      Float?
+  fetchedAt     DateTime @default(now())
+
+  @@index([marketId])
+  @@index([bookId])
+}
+
+model Boost {
+  id          String   @id
+  bookId      String
+  book        Book     @relation(fields: [bookId], references: [id])
+  type        String   // standard | free_bet | no_sweat | site_credit | profit_boost
+  title       String
+  description String?
+  amount      Float    // stake amount for free bet, refund cap for no sweat, credit for site credit
+  cashRate    Float?   // no-sweat conversion rate, 0..1
+  active      Boolean  @default(true)
+  activeFrom  DateTime @default(now())
+  activeTo    DateTime?
+  eventId     String?  // optional restriction to one event
+  arbOpps     ArbOpp[]
+
+  @@index([bookId])
+}
+
+model ArbOpp {
+  id               String   @id
+  eventId          String
+  event            Event    @relation(fields: [eventId], references: [id])
+  marketId         String
+  market           Market   @relation(fields: [marketId], references: [id])
+  bookAId          String
+  bookA            Book     @relation("ArbBookA", fields: [bookAId], references: [id])
+  bookBId          String
+  bookB            Book     @relation("ArbBookB", fields: [bookBId], references: [id])
+  boostId          String?
+  boost            Boost?   @relation(fields: [boostId], references: [id])
+  boostType        String   @default("standard")
+
+  oddsA            Float
+  oddsB            Float
+  sideALabel       String
+  sideBLabel       String
+  stakeA           Float
+  stakeB           Float
+  costBasis        Float
+  guaranteedProfit Float
+  netReturnPct     Float
+
+  computedAt       DateTime @default(now())
+
+  @@index([netReturnPct])
+  @@index([eventId])
+}
+
+model Bet {
+  id         String    @id
+  eventId    String?
+  event      Event?    @relation(fields: [eventId], references: [id])
+  marketId   String?
+  market     Market?   @relation(fields: [marketId], references: [id])
+  bookId     String
+  book       Book      @relation(fields: [bookId], references: [id])
+  side       String
+  label      String
+  americanOdds Float
+  stake      Float
+  result     String    // pending | won | lost | void | cashed
+  payout     Float     @default(0)
+  profit     Float     @default(0)
+  evAtPlacement Float? // theoretical expected value when placed
+  boostType  String    @default("standard")
+  tag        String?   // optional grouping tag
+  placedAt   DateTime
+  settledAt  DateTime?
+
+  @@index([placedAt])
+  @@index([bookId])
+  @@index([result])
+}
+
+model BankrollEntry {
+  id        String   @id
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id])
+  balance   Float
+  exposed   Float    @default(0)
+  snappedAt DateTime @default(now())
+
+  @@index([bookId, snappedAt])
+}

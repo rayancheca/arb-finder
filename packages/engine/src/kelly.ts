@@ -1,5 +1,5 @@
-import { americanToDecimal } from "./odds.js";
-import type { AmericanOdds } from "./types.js";
+import { americanToDecimal } from "./odds";
+import type { AmericanOdds } from "./types";
 
 /**
  * Kelly criterion for a single bet.

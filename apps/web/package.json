@@ -1,0 +1,40 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate --schema=../../db/schema.prisma && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "prisma:generate": "prisma generate --schema=../../db/schema.prisma",
+    "prisma:push": "prisma db push --schema=../../db/schema.prisma",
+    "seed": "DATABASE_URL=file:$PWD/../../db/dev.db tsx ../../db/seed.ts"
+  },
+  "dependencies": {
+    "@arb/engine": "workspace:*",
+    "@prisma/client": "6.2.1",
+    "@radix-ui/react-slider": "1.2.2",
+    "@radix-ui/react-tabs": "1.1.2",
+    "@radix-ui/react-tooltip": "1.1.6",
+    "clsx": "2.1.1",
+    "date-fns": "4.1.0",
+    "lucide-react": "0.469.0",
+    "next": "15.1.4",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "recharts": "2.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.5.1",
+    "prisma": "6.2.1",
+    "tailwindcss": "3.4.17",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3"
+  }
+}

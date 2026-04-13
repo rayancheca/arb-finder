@@ -2,8 +2,8 @@ import {
   americanToDecimal,
   americanToImpliedProb,
   payoutWithStake,
-} from "./odds.js";
-import type { AmericanOdds, ArbResult } from "./types.js";
+} from "./odds";
+import type { AmericanOdds, ArbResult } from "./types";
 
 /**
  * Site-credit / bonus-cash arb. Matches the `bet365 trade` sheet.

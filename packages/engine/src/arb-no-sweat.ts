@@ -2,8 +2,8 @@ import {
   americanToDecimal,
   americanToImpliedProb,
   payoutWithStake,
-} from "./odds.js";
-import type { AmericanOdds, ArbResult, Side } from "./types.js";
+} from "./odds";
+import type { AmericanOdds, ArbResult, Side } from "./types";
 
 /**
  * No-sweat / first-bet-safety-net arb. Matches the `no sweat` sheet.
