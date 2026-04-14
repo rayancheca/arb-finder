@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ..logging_setup import get_logger
+from ..notifications import NotifiableOpp, notify_opportunities
 
 log = get_logger("pipeline.arbs")
 
@@ -118,6 +119,20 @@ def recompute_arb_opps(conn: sqlite3.Connection) -> int:
 
     inserted = 0
     now_iso = _iso(datetime.now(timezone.utc))
+    notifiable: list[NotifiableOpp] = []
+
+    # Cache book name lookups for the notification payload so we don't
+    # query per-opp.
+    book_names = {
+        row["id"]: (row["name"], row["key"])
+        for row in conn.execute("SELECT id, name, key FROM Book").fetchall()
+    }
+    event_labels = {
+        row["id"]: f"{row['awayTeam']} @ {row['homeTeam']}"
+        for row in conn.execute(
+            "SELECT id, homeTeam, awayTeam FROM Event"
+        ).fetchall()
+    }
 
     for market_id, sides in by_market.items():
         # A 2-way arb needs two opposing sides. We pair home×away or over×under.
@@ -166,5 +181,23 @@ def recompute_arb_opps(conn: sqlite3.Connection) -> int:
                         ),
                     )
                     inserted += 1
+                    notifiable.append(
+                        NotifiableOpp(
+                            id="",
+                            net_return_pct=arb.net_return_pct,
+                            guaranteed_profit=arb.guaranteed_profit,
+                            book_a_name=book_names.get(a["bookId"], ("?",))[0],
+                            book_b_name=book_names.get(b["bookId"], ("?",))[0],
+                            event_label=event_labels.get(a["eventId"], "?"),
+                            side_a_label=a["label"],
+                            side_b_label=b["label"],
+                        )
+                    )
+
+    # Fire-and-forget notifications; swallows its own errors.
+    try:
+        notify_opportunities(notifiable)
+    except Exception:  # noqa: BLE001
+        log.exception("notifications_fatal")
 
     return inserted

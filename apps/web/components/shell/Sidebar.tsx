@@ -28,7 +28,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 flex h-screen w-[228px] shrink-0 flex-col border-r border-border bg-surface-sunken">
+    <aside className="sticky top-0 hidden h-screen w-[228px] shrink-0 flex-col border-r border-border bg-surface-sunken md:flex">
       <div className="px-6 pt-7 pb-6">
         <div className="flex items-center gap-2.5">
           <div className="relative h-7 w-7 rounded-[6px] bg-gradient-to-br from-accent to-profit">

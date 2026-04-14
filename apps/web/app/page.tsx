@@ -7,6 +7,7 @@ import { OddsCell } from "@/components/ui/OddsCell";
 import { BookChip } from "@/components/ui/BookChip";
 import { BoostBadge } from "@/components/ui/BoostBadge";
 import { Sparkline } from "@/components/ui/Sparkline";
+import { DashboardKeyboardNav } from "@/components/dashboard/DashboardKeyboardNav";
 import {
   formatMoney,
   formatMoneyShort,
@@ -57,6 +58,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-[1320px] px-6 py-6">
+      <DashboardKeyboardNav />
       {/* Header row */}
       <div className="mb-5 flex items-end justify-between gap-4">
         <div>
@@ -222,8 +224,9 @@ export default async function DashboardPage() {
                   </td>
                   <td className="px-5 py-3 text-right">
                     <Link
+                      data-arb-row
                       href={`/opp/${opp.id}`}
-                      className="inline-flex items-center gap-0.5 text-[11px] text-text-dim opacity-0 transition-opacity group-hover:opacity-100"
+                      className="inline-flex items-center gap-0.5 rounded-sm text-[11px] text-text-dim opacity-0 transition-opacity group-hover:opacity-100"
                     >
                       view
                       <ChevronRight className="h-3 w-3" />
