@@ -97,9 +97,15 @@ def _iso(dt: datetime) -> str:
 
 
 def recompute_arb_opps(conn: sqlite3.Connection) -> int:
-    """Recompute the ArbOpp table. Returns the number of rows inserted."""
-    conn.execute("DELETE FROM ArbOpp")
+    """
+    Recompute the ArbOpp table for markets that have fresh scraper data.
 
+    Important: we do NOT wipe every ArbOpp at the start. That would clobber
+    hand-crafted or web-computed arbs attached to markets the worker doesn't
+    cover (e.g. seeded demo arbs from db/seed.ts). Instead we only delete
+    and replace rows for markets that the scraper actually populated in
+    this cycle.
+    """
     # Group selections by (marketId, side) so we can pair them across books.
     rows = list(
         conn.execute(
@@ -112,6 +118,16 @@ def recompute_arb_opps(conn: sqlite3.Connection) -> int:
             """
         ).fetchall()
     )
+
+    # Only wipe arbs for markets that appear in the current selection set.
+    # Seed-only markets keep their hand-crafted arbs.
+    touched_market_ids = {r["marketId"] for r in rows}
+    if touched_market_ids:
+        placeholders = ",".join("?" for _ in touched_market_ids)
+        conn.execute(
+            f"DELETE FROM ArbOpp WHERE marketId IN ({placeholders})",
+            tuple(touched_market_ids),
+        )
 
     by_market: dict[str, dict[str, list[sqlite3.Row]]] = {}
     for r in rows:

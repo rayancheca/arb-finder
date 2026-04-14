@@ -91,8 +91,8 @@ async def tick() -> None:
         log.exception("tick_failed")
 
 
-def run_forever() -> None:
-    """Start the AsyncIO scheduler and block until interrupted."""
+async def _scheduler_main() -> None:
+    """Scheduler runs inside an asyncio loop that we keep alive forever."""
     scheduler = AsyncIOScheduler(timezone="UTC")
     scheduler.add_job(
         tick,
@@ -105,9 +105,17 @@ def run_forever() -> None:
     )
     log.info("scheduler_start", interval_seconds=POLL_INTERVAL_SECONDS)
     scheduler.start()
-    loop = asyncio.get_event_loop()
+    # Block forever — APScheduler runs its jobs on this loop, but the
+    # loop itself needs an awaitable to keep alive.
     try:
-        loop.run_forever()
+        await asyncio.Event().wait()
+    finally:
+        scheduler.shutdown(wait=False)
+
+
+def run_forever() -> None:
+    """Start the AsyncIO scheduler and block until interrupted."""
+    try:
+        asyncio.run(_scheduler_main())
     except KeyboardInterrupt:
         log.info("scheduler_stop")
-        scheduler.shutdown(wait=False)
