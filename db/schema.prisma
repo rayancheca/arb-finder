@@ -43,10 +43,25 @@ model Event {
   markets       Market[]
   arbOpps       ArbOpp[]
   bets          Bet[]
+  bookRefs      BookEventRef[]
   createdAt     DateTime  @default(now())
 
   @@index([commenceTime])
   @@index([sportId])
+}
+
+// Maps a book's native event ID → our canonical Event.
+// Lets scrapers upsert selections idempotently without re-matching every cycle.
+model BookEventRef {
+  id           String  @id
+  bookId       String
+  bookEventId  String
+  eventId      String
+  event        Event   @relation(fields: [eventId], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@unique([bookId, bookEventId])
+  @@index([eventId])
 }
 
 model Market {
@@ -55,10 +70,12 @@ model Market {
   event      Event       @relation(fields: [eventId], references: [id])
   type       String      // moneyline | spread | total | prop_2way
   line       Float?      // null for moneyline; point spread or total line otherwise
+  marketKey  String      // canonical key for upsert: "moneyline" | "spread:-3.5" | "total:220.5"
   selections Selection[]
   arbOpps    ArbOpp[]
   bets       Bet[]
 
+  @@unique([eventId, marketKey])
   @@index([eventId])
 }
 
@@ -74,8 +91,58 @@ model Selection {
   maxStake      Float?
   fetchedAt     DateTime @default(now())
 
+  @@unique([marketId, bookId, side])
   @@index([marketId])
   @@index([bookId])
+}
+
+// Canonical team-name dictionary used by the event matcher.
+// Alias is whatever the book reports ("NY Knicks", "New York Knickerbockers");
+// canonical is the normalized form ("new york knicks") used for hashing.
+model TeamAlias {
+  id         String  @id
+  alias      String
+  canonical  String
+  sportKey   String  @default("basketball_nba")
+  createdAt  DateTime @default(now())
+
+  @@unique([alias, sportKey])
+  @@index([canonical])
+}
+
+// Per-book scrape cycle log — drives the circuit breaker, Settings page health,
+// and retry/backoff accounting.
+model ScrapeRun {
+  id              String    @id
+  bookKey         String
+  startedAt       DateTime  @default(now())
+  finishedAt      DateTime?
+  status          String    // running | ok | error | skipped | circuit_open
+  error           String?
+  httpStatus      Int?
+  eventsFound     Int       @default(0)
+  selectionsFound Int       @default(0)
+  durationMs      Int?
+
+  @@index([bookKey, startedAt])
+}
+
+// Events a scraper saw but the matcher could not place against any canonical
+// Event (e.g. unknown team name). Surfaced in the UI for manual resolution.
+model EventMatchReview {
+  id           String   @id
+  bookId       String
+  bookEventId  String
+  rawHome      String
+  rawAway      String
+  commenceTime DateTime
+  reason       String
+  payload      String   // JSON snapshot of the raw event
+  createdAt    DateTime @default(now())
+  resolved     Boolean  @default(false)
+
+  @@index([resolved, createdAt])
+  @@unique([bookId, bookEventId])
 }
 
 model Boost {

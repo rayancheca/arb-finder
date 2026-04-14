@@ -127,23 +127,31 @@ export function AnalyticsClient({ bets, books }: Props) {
     count: bets.filter((x) => x.stake >= b.min && x.stake <= b.max).length,
   }));
 
-  // Day-hour heatmap
-  const heatmap: number[][] = Array.from({ length: 7 }, () =>
-    Array.from({ length: 24 }, () => 0),
+  // Day × Hour heatmap — profit summed per cell, count tracked for tooltip
+  interface HeatCell {
+    readonly profit: number;
+    readonly count: number;
+  }
+  const heatmap: HeatCell[][] = Array.from({ length: 7 }, () =>
+    Array.from({ length: 24 }, () => ({ profit: 0, count: 0 })),
   );
   for (const b of bets) {
     const d = new Date(b.placedAt);
     const day = d.getDay();
     const hour = d.getHours();
     const row = heatmap[day];
-    if (row) row[hour] = (row[hour] ?? 0) + b.profit;
+    if (!row) continue;
+    const prev = row[hour] ?? { profit: 0, count: 0 };
+    row[hour] = { profit: prev.profit + b.profit, count: prev.count + 1 };
   }
-  const maxAbs = Math.max(
-    ...heatmap.flat().map((v) => Math.abs(v)),
-    1,
-  );
+  const heatProfits = heatmap.flat().map((c) => c.profit);
+  const maxProfit = Math.max(...heatProfits, 0);
+  const minProfit = Math.min(...heatProfits, 0);
+  const maxAbs = Math.max(Math.abs(maxProfit), Math.abs(minProfit), 1);
 
   const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const HOURS = Array.from({ length: 24 }, (_, h) => h);
+  const HOUR_CELL = 20; // px — must match body cell width
 
   return (
     <div className="mx-auto max-w-[1320px] px-6 py-6">
@@ -392,45 +400,90 @@ export function AnalyticsClient({ bets, books }: Props) {
           </div>
         </SurfaceCard>
 
-        <SurfaceCard title="Day × Hour heatmap" className="col-span-2">
-          <div className="flex flex-col gap-1">
-            <div className="ml-8 grid grid-cols-24 gap-px text-[8px] text-text-faint">
-              {Array.from({ length: 24 }).map((_, h) => (
-                <div
-                  key={h}
-                  className="mono-num text-center"
-                  style={{ width: 18 }}
-                >
-                  {h % 4 === 0 ? h : ""}
-                </div>
-              ))}
+        <SurfaceCard
+          title="Day × Hour heatmap"
+          subtitle="Profit by day of week × hour — 60 days"
+          className="col-span-2"
+        >
+          <div className="flex flex-col gap-[3px]">
+            {/* Hour header — flex so it aligns perfectly with body cells */}
+            <div className="flex items-center gap-1">
+              <div className="w-8" aria-hidden />
+              <div className="flex gap-[2px]">
+                {HOURS.map((h) => (
+                  <div
+                    key={h}
+                    className="mono-num text-center text-[9px] text-text-faint"
+                    style={{ width: HOUR_CELL }}
+                  >
+                    {h % 3 === 0 ? h.toString().padStart(2, "0") : ""}
+                  </div>
+                ))}
+              </div>
             </div>
             {heatmap.map((row, day) => (
               <div key={day} className="flex items-center gap-1">
-                <div className="w-7 text-[10px] text-text-faint">
+                <div className="mono-num w-8 text-[10px] uppercase tracking-wider text-text-faint">
                   {DAYS[day]}
                 </div>
-                <div className="flex gap-px">
-                  {row.map((val, h) => {
-                    const intensity = Math.abs(val) / maxAbs;
-                    const color =
-                      val > 0
-                        ? `rgba(110, 214, 155, ${0.15 + intensity * 0.75})`
-                        : val < 0
-                          ? `rgba(240, 120, 100, ${0.15 + intensity * 0.75})`
-                          : "var(--surface-sunken)";
+                <div className="flex gap-[2px]">
+                  {row.map((cell, h) => {
+                    const { profit, count } = cell;
+                    const intensity = Math.min(
+                      1,
+                      Math.abs(profit) / maxAbs,
+                    );
+                    const alpha =
+                      count === 0 ? 0 : 0.18 + intensity * 0.72;
+                    const background =
+                      count === 0
+                        ? "var(--surface-sunken)"
+                        : profit >= 0
+                          ? `oklch(78% 0.17 152 / ${alpha})`
+                          : `oklch(68% 0.22 25 / ${alpha})`;
+                    const borderColor =
+                      count === 0
+                        ? "var(--border)"
+                        : "transparent";
                     return (
                       <div
                         key={h}
-                        title={`${DAYS[day]} ${h}:00 — ${formatMoney(val, { sign: true })}`}
-                        className="h-[18px] w-[18px] rounded-[2px]"
-                        style={{ background: color }}
+                        title={
+                          count === 0
+                            ? `${DAYS[day]} ${h}:00 — no bets`
+                            : `${DAYS[day]} ${h}:00 — ${formatMoney(profit, { sign: true })} · ${count} bet${count === 1 ? "" : "s"}`
+                        }
+                        className="rounded-[3px] transition-transform hover:scale-[1.25]"
+                        style={{
+                          width: HOUR_CELL,
+                          height: HOUR_CELL,
+                          background,
+                          border: `1px solid ${borderColor}`,
+                        }}
                       />
                     );
                   })}
                 </div>
               </div>
             ))}
+            {/* Legend */}
+            <div className="mt-3 flex items-center justify-between pl-9 text-[10px] text-text-faint">
+              <span className="mono-num">
+                {formatMoneyShort(-maxAbs)}
+              </span>
+              <div className="flex h-1.5 flex-1 overflow-hidden rounded-full mx-3">
+                <div
+                  className="flex-1"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, oklch(68% 0.22 25 / 0.9), oklch(68% 0.22 25 / 0.2), var(--surface-sunken), oklch(78% 0.17 152 / 0.2), oklch(78% 0.17 152 / 0.9))",
+                  }}
+                />
+              </div>
+              <span className="mono-num">
+                {formatMoneyShort(maxAbs)}
+              </span>
+            </div>
           </div>
         </SurfaceCard>
       </div>

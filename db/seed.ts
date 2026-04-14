@@ -121,6 +121,7 @@ async function main() {
         eventId,
         type: "moneyline",
         line: null,
+        marketKey: "moneyline",
       },
     });
 
@@ -155,12 +156,14 @@ async function main() {
 
     // Spread and total markets (just two books each, for variety)
     const spId = `mkt_${eventId}_sp`;
+    const spreadLine = 3.5 + Math.floor(Math.random() * 6);
     await prisma.market.create({
       data: {
         id: spId,
         eventId,
         type: "spread",
-        line: 3.5 + Math.floor(Math.random() * 6),
+        line: spreadLine,
+        marketKey: `spread:${spreadLine}`,
       },
     });
     await prisma.selection.createMany({

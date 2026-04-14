@@ -1,74 +1,79 @@
 # state.md
 
 ## Status
-SESSION 1 COMPLETE — mockup shipped with all 6 tabs functional against seed data. Engine 52/52 tests green. Build green. All routes render 200 with real content.
+SESSION 2 PAUSED MID-PHASE-A — worker scaffolded, scrapers written, pipeline + matcher + arb recomputation in place. Not yet installed in a venv; doctor + pytest + live cycle not yet run. Resume by installing the worker and running `python -m arb_worker doctor`, then `pytest`, then `python -m arb_worker cycle`.
 
 ## Project
-arb-finder — cross-book sportsbook arbitrage + promo-boost finder with Kelly bankroll optimization and personal P&L analytics
+arb-finder — cross-book sportsbook arbitrage + promo-boost finder
 
 ## Session count
-1
+2
 
-## Session 1 plan
-Ship the full mockup. Every page in the nav renders with realistic seeded data. Arb engine ported from Rayan's Excel with parity tests. Design system in place (Editorial Terminal direction). No real scrapers yet — seed data only. Pushed to GitHub.
+## Session 2 plan
+Scoped to Phase A only (real data layer) + fix the day/hour heatmap + back-test every existing feature.
 
-## Thinking: scaffold
-What this needs to accomplish — Working monorepo with Next.js 15 app, shared TS engine package, Prisma schema, SQLite database, pnpm workspaces wired.
-Approach — pnpm workspaces, Next 15 App Router + React 19, Prisma generate against SQLite, Tailwind v4.
-What could go wrong — Next 15 on Node 25 might surface peer warnings. Prisma generate needs a schema before it runs.
-Done — `pnpm install` succeeds, `pnpm --filter web dev` boots a blank Next app, `pnpm --filter engine test` runs (empty pass).
-
-## Completed steps
-- Clarified project scope with Rayan in two rounds of Q&A
-- Read the Excel calculator (`sportbook calculator copy.xlsx`), mapped all four sheets (calc, free bet, no sweat, bet365 trade) to arithmetic I can port verbatim
-- Flagged six math improvements in the Excel (free-bet formula generalization, rounding compounding, no-sweat cash rate parameterization, max-stake enforcement, min-profit vs EV labels, slippage buffer)
-- Locked architecture (Next 15 + TS engine package + Python worker + Prisma + SQLite→Postgres)
-- Locked design direction (Editorial Terminal, OKLCH palette, Inter + JetBrains Mono, FLIP motion)
-- Created `projects/arb-finder/`, `git init`, branch `main`
-- Wrote full `CLAUDE.md` spec
+## Completed this session
+- **Back-test** — full engine test suite (52/52 green), `pnpm --filter web build` green, dev server started, smoke-tested all 6 routes (`/`, `/search`, `/boosts`, `/bankroll`, `/analytics`, `/opp/[id]`) — every route returns 200 with no runtime errors. Killed the server cleanly.
+- **Heatmap fix** — rewrote `apps/web/components/analytics/AnalyticsClient.tsx` day×hour block. Original bug: header used `grid grid-cols-24` (Tailwind doesn't define 24 cols), so hour labels drifted from body cells. Rewrote header to use flex at 20px cell width to match body exactly. Added per-cell count tracking, clearer tooltips (`Sat 19:00 — +$128.50 · 3 bets`), empty-cell dimmed state with border, OKLCH color ramp matching the palette, and a colorbar legend at the bottom. Typecheck clean.
+- **Schema extensions** — added `BookEventRef`, `TeamAlias`, `ScrapeRun`, `EventMatchReview` models; added `marketKey` to `Market` with `@@unique([eventId, marketKey])`; added `@@unique([marketId, bookId, side])` to `Selection` so the worker can upsert. Reset + re-pushed SQLite, re-seeded successfully (8 books, 12 events, 120 historical bets).
+- **Python worker scaffold** (`apps/worker/`):
+  - `pyproject.toml` with httpx, curl_cffi, playwright, apscheduler, tenacity, structlog, rapidfuzz, pytest
+  - `arb_worker/config.py` — repo-root .env loader, book registry, circuit-breaker tunables
+  - `arb_worker/db.py` — sqlite3 connection, transaction ctx, raw parameterized upserts for Event / BookEventRef / Market / Selection / ScrapeRun / EventMatchReview, plus `ensure_nba_sport`
+  - `arb_worker/logging_setup.py` — structlog JSON in prod, ConsoleRenderer in TTY
+  - `arb_worker/matcher/canonical.py` — full NBA alias dictionary (30 teams), `normalize`, `resolve_team` with exact → alias → rapidfuzz ≥90 fallback, `build_canonical_key`, `resolve` returning a typed `Resolution`
+  - `arb_worker/matcher/event_matcher.py` — 5-step match: BookEventRef fast path → canonical key → ±15 min fuzzy time window → create-new → review queue on failure
+  - `arb_worker/scrapers/base.py` — `SportsbookScraper` ABC with tenacity retry, `get_json` helper, `ScraperError` carrying http_status
+  - `arb_worker/scrapers/draftkings.py` — eventgroups 42648 endpoint, parses moneyline/spread/total
+  - `arb_worker/scrapers/fanduel.py` — content-managed-page custom NBA page, attachments.events + attachments.markets crosswalk
+  - `arb_worker/scrapers/betmgm.py` — cds-api/bettingoffer/fixtures, reads BETMGM_ACCESS_ID from env, hard-fails clean when missing
+  - `arb_worker/scrapers/caesars.py` — api.americanwagering.com v3 events/schedule
+  - `arb_worker/scrapers/betrivers.py` — nj.betrivers.com listview/events leagueId 1149
+  - `arb_worker/pipeline/run_cycle.py` — asyncio.gather over all enabled scrapers, per-book transaction, ScrapeRun rows for every outcome, arb recomputation always runs
+  - `arb_worker/pipeline/recompute_arbs.py` — Python port of packages/engine arb-standard math, pairs home×away and over×under across books, skips same-book pairs, inserts into ArbOpp
+  - `arb_worker/scheduler.py` — APScheduler AsyncIOScheduler on 5-min cadence, `_cooldown_seconds` exponential backoff (cap 1h), `should_skip` breaker check against recent ScrapeRun rows
+  - `arb_worker/cli.py` + `__main__.py` — `cycle` / `run` / `doctor` subcommands
+  - `tests/test_canonical.py` — normalize, resolve_team (exact + alias + fuzzy), canonical key order-independence, resolve round trip, failure reason
+  - `tests/test_arb_math.py` — American↔decimal, implied probability, no-arb detection, positive net return, stake equalization, symmetry
+  - `tests/test_cycle_smoke.py` — raw-SQLite fixture exercising `recompute_arb_opps` on a two-book moneyline, asserts 1 arb found + same-book pairs ignored
+  - `README.md` — architecture, running, env, circuit breaker doc
+  - `.gitignore` — venv, pycache, .env
 
 ## In progress
-Nothing — session 1 complete. Ready to start session 2 (real scrapers) when you are.
+Phase A1 task still marked in_progress because I haven't yet verified the worker installs + runs. On resume, start here.
 
-## Next steps (session 2)
-1. Create `apps/worker/` with Python 3.12 + httpx + playwright
-2. Build first scraper: DraftKings public JSON endpoint (sportsbook.draftkings.com/sites/US-NY-SB/api/v5/eventgroups/*)
-3. Event matcher — canonical key hashing + team alias tables + fuzzy commence_time match within ±15 min
-4. Wire scraper → Prisma write path → arb recomputation → UI
-5. Add FanDuel, BetMGM, Caesars, BetRivers scrapers (same pattern, copy-and-adapt)
-6. APScheduler task running every 5 minutes
-7. bet365 + Fanatics + ESPN BET via Playwright (flaky, lowest priority)
-8. Browser extension for bet-slip autofill
-9. Excel history import → replaces seeded historical bets with real data
-10. Deploy: Vercel (web) + Neon (Postgres) + Railway (Python worker)
+## Next steps (resume here)
+1. **Install & smoke-test the worker** (system Python is 3.14; the venv needs 3.12 or 3.13. Try `brew install python@3.12` first, or use 3.13 if it's close enough — update pyproject `requires-python` if needed):
+   ```bash
+   cd apps/worker
+   python3.12 -m venv .venv && source .venv/bin/activate
+   pip install -e ".[dev]"
+   python -m arb_worker doctor        # verifies DB + scrapers wire up
+   pytest                              # should be 100% green before touching anything live
+   python -m arb_worker cycle         # ONE real cycle against live books
+   ```
+2. If a live book's JSON shape has drifted, adjust the matching scraper only. Don't rewrite — read the raw response, note the drift in the scraper file, fix it narrowly.
+3. Confirm the Next.js app now shows live selections: `pnpm --filter web dev`, open `/`, watch ArbOpp rows update.
+4. Mark task #3 (scaffold) and #8 (scheduler) completed.
+5. **Commit Phase A** — one fat commit covering schema + worker + heatmap + backtest. Push.
+6. Pause for Rayan's go-ahead before moving to Phase B (boosts CRUD + Playwright auto-detect).
 
-## Decisions log
-- **No create-next-app** — hand-scaffolded to avoid template cruft and retain full control over every file
-- **Tailwind v4** — CSS-first config, design tokens in `:root`, utilities compose variables
-- **Prisma over Drizzle** — migrations and Studio matter more than the slight runtime perf win
-- **SQLite locally, Postgres in prod** — same schema, flipped by `DATABASE_URL` at deploy time
-- **Engine package in TS (not Rust or Go)** — the whole thing is <300 lines of arithmetic; TS is the right fit and means the client can recompute stake splits instantly on a slider change
-- **Vitest over Jest** — faster, native ESM, first-class TS
-- **Recharts for analytics** — mature, composable, themeable enough; not worth Visx/D3 complexity at this stage
-- **Radix primitives, fully restyled** — accessibility free, template look avoided
-- **Worker language is Python but worker is NOT built in session 1** — session 1 is the mockup only; worker scaffold and scrapers come in session 2+
-- **Excel parity first, improvements second** — port faithfully, then apply the six fixes behind a toggle so Rayan can compare outputs
+## Decisions log (additions)
+- **Schema owned by Prisma, worker writes via raw SQL** — avoids a second ORM and keeps migrations single-sourced
+- **Arb math ported to Python rather than shelled out to TS** — forking Node per cycle would dominate latency at the 5-min cadence × hundreds of markets; parity is pinned by test_arb_math.py mirroring arb-standard.test.ts
+- **Boost arb computation stays in TS (client-side)** — it only matters for the detail page's slider, which is interactive; the worker only recomputes the `standard` baseline
+- **sqlite3 stdlib over aiosqlite** — the worker is I/O-bound on HTTP, not DB; per-cycle DB work is <100ms and blocking calls inside a sync transaction are simpler than async cursor juggling
+- **rapidfuzz for team matching** — fast C-backed Levenshtein, zero Python-layer overhead
+- **Circuit breaker reads ScrapeRun rows rather than holding in-memory state** — survives worker restarts and is visible to the UI when Phase G lands
+- **BetMGM access ID lives in env** — BetMGM rotates it periodically; we fail clean with a helpful message instead of crashing the scheduler
+- **Phase F books (bet365/Fanatics/ESPN BET) are `enabled=False` in the registry** — they'll stay off the schedule until we get to Phase F so a broken Playwright path can't take out the whole cycle
 
 ## Rayan's feedback this session
-- Free data only for now — no paid APIs
-- Wants automated scraping (Playwright + JSON endpoints), not screenshots
-- Will tell me the active promos OR wants auto-login via Playwright on his own session (I'll support both)
-- All NY sportsbooks in scope
-- Any 2-way market (moneyline, spread, total, 2-way props)
-- 5-minute refresh cadence is fine
-- Single-user, both local and hosted
-- Deep links when supported, browser extension otherwise
-- Mockup first with seed data, then real scrapers
-- Trusts my stack call
-- Added Kelly / bankroll optimization tab
-- Added personal analytics tab (all P&L, all history, charts, trends, optimization insights)
-- Permission to improve on Excel formulas where I see flaws — "set it up as you like in the prettiest most efficient way possible"
-- Explicit design mandate: "become a good designer not just coder"
+- "split into smaller tasks — execute Phase A only, will continue later"
+- Day/hour heatmap needs fixing (done)
+- Back-test every feature for workability before building Phase A (done, all green)
+- "pause this session, i will resume shortly when i say resume, pickup exactly where you left off same instructions" — pausing cleanly here
 
 ## Blockers
-None.
+- System Python is 3.14. `pyproject.toml` declares `>=3.12`; pip will install on 3.14 but `curl_cffi` and `playwright` can lag on bleeding-edge CPython. Worth pinning to 3.12 via `brew install python@3.12` on resume.
+- BetMGM scraper needs `BETMGM_ACCESS_ID` env var — fails clean without it, circuit breaker handles it.
