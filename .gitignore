@@ -15,4 +15,6 @@ coverage/
 .idea/
 db/dev.db
 db/dev.db-journal
+db/dev.db-shm
+db/dev.db-wal
 prisma/migrations/dev.db*
