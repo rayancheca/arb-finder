@@ -9,7 +9,6 @@ import {
   Flame,
   Search,
   Settings,
-  Upload,
   Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -27,7 +26,6 @@ const ROUTES: ReadonlyArray<Route> = [
   { label: "Boosts", href: "/boosts", icon: Flame, hint: "Active promos" },
   { label: "Bankroll", href: "/bankroll", icon: Wallet, hint: "Kelly + risk-of-ruin" },
   { label: "Analytics", href: "/analytics", icon: BarChart3, hint: "60-day P&L" },
-  { label: "Import", href: "/import", icon: Upload, hint: "Upload Excel history" },
   { label: "Settings", href: "/settings", icon: Settings, hint: "Scraper health + preferences" },
 ];
 

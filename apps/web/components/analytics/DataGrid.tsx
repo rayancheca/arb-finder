@@ -104,7 +104,16 @@ export function DataGrid<T>({
         <tbody>
           {sorted.map((row, idx) => (
             <tr
-              key={idx}
+              // Stable row key: combine every column value so the row
+              // maintains identity across re-sorts. Falls back to idx
+              // only if all columns render to empty strings.
+              key={
+                columns
+                  .map((c) =>
+                    String((row as Record<string, unknown>)[String(c.key)] ?? ""),
+                  )
+                  .join("|") || String(idx)
+              }
               className="border-b border-border last:border-b-0 hover:bg-surface/60"
             >
               {columns.map((col) => {

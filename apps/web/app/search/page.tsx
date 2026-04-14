@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { BookChip } from "@/components/ui/BookChip";
 import { OddsCell } from "@/components/ui/OddsCell";
-import { formatRelativeTime } from "@/lib/format";
+import { formatMoney, formatPct, formatRelativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +31,10 @@ export default async function SearchPage({
             include: { book: true },
           },
         },
+      },
+      arbOpps: {
+        orderBy: { netReturnPct: "desc" },
+        take: 1,
       },
     },
     take: 20,
@@ -72,18 +76,16 @@ export default async function SearchPage({
         {events.map((event) => {
           const moneyline = event.markets.find((m) => m.type === "moneyline");
           if (!moneyline) return null;
+          const bestArb = event.arbOpps[0];
           return (
             <SurfaceCard key={event.id} pad={false}>
               <div className="flex items-start justify-between px-5 pt-4">
                 <div>
-                  <Link
-                    href={`/opp/${event.id}`}
-                    className="text-[15px] font-semibold tracking-tight hover:text-accent"
-                  >
+                  <h3 className="text-[15px] font-semibold tracking-tight text-text">
                     {event.awayTeam}{" "}
                     <span className="text-text-faint">@</span>{" "}
                     {event.homeTeam}
-                  </Link>
+                  </h3>
                   <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-text-faint">
                     NBA · Moneyline ·{" "}
                     <span className="normal-case tracking-normal">
@@ -91,6 +93,19 @@ export default async function SearchPage({
                     </span>
                   </div>
                 </div>
+                {bestArb && (
+                  <Link
+                    href={`/opp/${bestArb.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-[6px] border border-profit/40 bg-profit-bg px-2.5 py-1.5 text-[10px] font-semibold text-profit transition-colors hover:bg-profit/20"
+                  >
+                    <span className="mono-num">
+                      {formatPct(bestArb.netReturnPct, 2)}
+                    </span>
+                    <span className="uppercase tracking-[0.08em]">
+                      arb available →
+                    </span>
+                  </Link>
+                )}
               </div>
               <div className="mt-3 border-t border-border">
                 <div className="grid grid-cols-8 gap-3 px-5 py-3 text-[10px] uppercase tracking-[0.1em] text-text-faint">

@@ -445,7 +445,7 @@ export function AnalyticsClient({ bets, books }: Props) {
                 value: "chart",
                 label: "Chart",
                 icon: CHART_ICON,
-                content: <BoostBarsPreview rows={profitByBoost} />,
+                content: <BoostBarsPreview rows={profitByBoost} limit={20} />,
               },
               {
                 value: "table",
@@ -476,7 +476,7 @@ export function AnalyticsClient({ bets, books }: Props) {
           layoutId="histogram"
           title="Bet size distribution"
           subtitle="How much you stake"
-          preview={<HistogramChart data={histogram} height={200} />}
+          preview={<HistogramChart data={histogram} height={220} />}
         >
           <DrilldownTabs
             tabs={[
@@ -593,7 +593,7 @@ export function AnalyticsClient({ bets, books }: Props) {
                 value: "chart",
                 label: "Chart",
                 icon: CHART_ICON,
-                content: <SlippageBars rows={slippage} />,
+                content: <SlippageBars rows={slippage} limit={20} />,
               },
               {
                 value: "table",
@@ -625,13 +625,16 @@ export function AnalyticsClient({ bets, books }: Props) {
 
 function BoostBarsPreview({
   rows,
+  limit = 4,
 }: {
   readonly rows: ReadonlyArray<{ name: string; profit: number; count: number }>;
+  readonly limit?: number;
 }) {
   const max = Math.max(...rows.map((x) => Math.abs(x.profit)), 1);
+  const visible = rows.slice(0, limit);
   return (
     <div className="flex flex-col gap-3">
-      {rows.map((b) => {
+      {visible.map((b) => {
         const width = (Math.abs(b.profit) / max) * 100;
         return (
           <div key={b.name}>
@@ -667,6 +670,7 @@ function BoostBarsPreview({
 
 function SlippageBars({
   rows,
+  limit = 4,
 }: {
   readonly rows: ReadonlyArray<{
     bookId: string;
@@ -675,6 +679,7 @@ function SlippageBars({
     avgEdgeLost: number;
     betCount: number;
   }>;
+  readonly limit?: number;
 }) {
   if (rows.length === 0) {
     return (
@@ -686,7 +691,7 @@ function SlippageBars({
   const max = Math.max(...rows.map((x) => Math.abs(x.avgEdgeLost)), 0.01);
   return (
     <div className="flex flex-col gap-2.5">
-      {rows.slice(0, 12).map((s) => {
+      {rows.slice(0, limit).map((s) => {
         const width = (Math.abs(s.avgEdgeLost) / max) * 100;
         return (
           <div key={s.bookId}>

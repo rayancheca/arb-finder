@@ -14,6 +14,12 @@ interface Props {
   readonly children: ReactNode; // the drill-down content
   readonly className?: string;
   readonly previewClassName?: string;
+  /**
+   * Fixed pixel height for the preview area so every card in the analytics
+   * grid aligns to a single baseline. Defaults to 260 — matches the chart
+   * sizes used across all Phase H cards.
+   */
+  readonly previewHeight?: number;
 }
 
 /**
@@ -31,6 +37,7 @@ export function InteractiveCard({
   children,
   className,
   previewClassName,
+  previewHeight = 260,
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -68,7 +75,11 @@ export function InteractiveCard({
             </div>
             <motion.div
               layoutId={`preview-${layoutId}`}
-              className={cn("flex-1 p-5", previewClassName)}
+              style={{ height: previewHeight }}
+              className={cn(
+                "flex flex-col justify-center overflow-hidden p-5",
+                previewClassName,
+              )}
             >
               {preview}
             </motion.div>
@@ -127,7 +138,9 @@ export function InteractiveCard({
                     </Dialog.Close>
                   </div>
                   <motion.div
-                    layoutId={`preview-${layoutId}`}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15, duration: 0.3 }}
                     className="max-h-[calc(90vh-80px)] overflow-y-auto p-6"
                   >
                     {children}
