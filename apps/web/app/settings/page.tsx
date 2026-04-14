@@ -4,6 +4,7 @@ import { BookChip } from "@/components/ui/BookChip";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { SettingsActions } from "@/components/settings/SettingsActions";
+import { DataControls } from "@/components/settings/DataControls";
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
 
 export const dynamic = "force-dynamic";
@@ -135,6 +136,14 @@ export default async function SettingsPage() {
             </div>
             <ThemeToggle />
           </div>
+        </SurfaceCard>
+
+        <SurfaceCard
+          title="Data controls"
+          subtitle="Regenerate, clear, or recompute analytics data"
+          className="lg:col-span-2"
+        >
+          <DataControls />
         </SurfaceCard>
       </div>
     </div>

@@ -287,12 +287,27 @@ export function AnalyticsClient({ bets, books }: Props) {
           Analytics
         </h1>
         <p className="mt-2 text-[13px] text-text-dim">
-          Your last 60 days · {bets.length} bets placed ·{" "}
+          Last 60 days · {bets.length} bets placed ·{" "}
           <span className="mono-num text-text">
             {formatMoneyShort(totalStaked)}
           </span>{" "}
-          total wagered · click any card to expand
+          total wagered · click any card to drill down
         </p>
+      </div>
+
+      {/* Demo-data banner — honest about what's seeded */}
+      <div className="mb-5 flex items-center justify-between gap-4 rounded-[9px] border border-boost/30 bg-boost-bg px-4 py-3 text-[12px]">
+        <div className="flex items-center gap-2.5">
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-boost/15 text-[9px] font-bold text-boost">
+            i
+          </span>
+          <span className="text-text-dim">
+            These charts are powered by{" "}
+            <span className="font-semibold text-text">120 seeded demo bets</span>{" "}
+            over 60 days — not real trades. Settings → Reset demo data to
+            regenerate with fresh random numbers.
+          </span>
+        </div>
       </div>
 
       {/* KPI strip */}
