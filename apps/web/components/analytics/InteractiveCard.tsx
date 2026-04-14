@@ -51,7 +51,10 @@ export function InteractiveCard({
             whileTap={{ scale: 0.99 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
             className={cn(
-              "group relative flex flex-col overflow-hidden rounded-[12px] border border-border bg-surface text-left",
+              // `w-full` is critical — <button> is inline-block by default,
+              // so without this every card collapses to content width in
+              // grid cells and the analytics page looks like broken tiles.
+              "group relative flex w-full flex-col overflow-hidden rounded-[12px] border border-border bg-surface text-left",
               "shadow-[0_0_0_0_rgba(0,0,0,0)] hover:shadow-[0_8px_30px_-15px_rgba(0,0,0,0.6)] hover:border-border-strong",
               "transition-colors",
               className,
