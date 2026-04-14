@@ -1,0 +1,15 @@
+{
+  "name": "@arb/extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "arb-finder Chrome MV3 extension — bet-slip autofill across NY sportsbooks",
+  "scripts": {
+    "build": "node build.mjs",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.0.287",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "manifest_version": 3,
+  "name": "arb-finder",
+  "version": "0.1.0",
+  "description": "Pre-fills sportsbook bet slips from arb-finder deep links",
+  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "host_permissions": [
+    "https://sportsbook.fanduel.com/*",
+    "https://sportsbook.draftkings.com/*",
+    "https://sports.ny.betmgm.com/*",
+    "https://sportsbook.caesars.com/*",
+    "https://ny.betrivers.com/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "arb-finder",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://sportsbook.fanduel.com/*"],
+      "js": ["content-scripts/fanduel.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://sportsbook.draftkings.com/*"],
+      "js": ["content-scripts/draftkings.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://sports.ny.betmgm.com/*"],
+      "js": ["content-scripts/betmgm.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://sportsbook.caesars.com/*"],
+      "js": ["content-scripts/caesars.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://ny.betrivers.com/*"],
+      "js": ["content-scripts/betrivers.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content-scripts/*.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

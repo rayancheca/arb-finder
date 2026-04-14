@@ -20,6 +20,7 @@ import { OddsCell } from "@/components/ui/OddsCell";
 import { BookChip } from "@/components/ui/BookChip";
 import { BoostBadge } from "@/components/ui/BoostBadge";
 import { Button } from "@/components/ui/Button";
+import { buildDeepLink } from "@/lib/deep-links";
 import { formatMoney, formatPct, formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -233,8 +234,16 @@ export function OpportunityDetail({ opp }: Props) {
         subtitle="Deep links open the book's pre-filled slip when supported. Browser extension autofills otherwise."
       >
         <div className="grid grid-cols-2 gap-3">
-          <PlaceButton book={opp.bookA} stake={result.legA.stake} />
-          <PlaceButton book={opp.bookB} stake={result.legB.stake} />
+          <PlaceButton
+            book={opp.bookA}
+            stake={result.legA.stake}
+            sideLabel={opp.sideALabel}
+          />
+          <PlaceButton
+            book={opp.bookB}
+            stake={result.legB.stake}
+            sideLabel={opp.sideBLabel}
+          />
         </div>
         <div className="mt-4 flex items-start gap-2 rounded-[7px] border border-border bg-surface-sunken px-3 py-2.5 text-[11px] text-text-dim">
           <Shield className="mt-0.5 h-3 w-3 shrink-0 text-text-faint" />
@@ -328,17 +337,33 @@ function SummaryStat({
 function PlaceButton({
   book,
   stake,
+  sideLabel,
 }: {
   book: BookLite;
   stake: number;
+  sideLabel: string;
 }) {
+  function handleClick() {
+    const deepLink = buildDeepLink({
+      bookKey: book.key,
+      selectionId: sideLabel,
+      stake,
+    });
+    if (!deepLink) {
+      navigator.clipboard?.writeText(stake.toFixed(2));
+      window.alert(
+        `No deep link for ${book.name}. Stake copied to clipboard — open the bet slip manually.`,
+      );
+      return;
+    }
+    // For extension-assisted flows we still open the URL; the installed
+    // Chrome extension picks up the intent via chrome.storage.session on
+    // page load. For pure-URL flows (FanDuel) the URL does the work.
+    window.open(deepLink.url, "_blank", "noopener");
+  }
   return (
     <button
-      onClick={() => {
-        window.alert(
-          `[demo] Would deep-link to ${book.name} bet slip for $${stake.toFixed(2)}`,
-        );
-      }}
+      onClick={handleClick}
       className="group flex items-center justify-between rounded-[9px] border border-border bg-surface-sunken px-4 py-3.5 transition-colors hover:border-accent/50 hover:bg-accent-bg"
     >
       <div className="flex items-center gap-2.5">
