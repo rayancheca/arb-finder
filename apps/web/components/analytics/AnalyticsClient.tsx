@@ -7,6 +7,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,6 +17,10 @@ import {
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { StatBlock } from "@/components/ui/StatBlock";
 import { Sparkline } from "@/components/ui/Sparkline";
+import {
+  computeEvLeak,
+  computeSlippageByBook,
+} from "@/lib/analytics-derivations";
 import { formatMoney, formatMoneyShort, formatPct } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -26,6 +32,8 @@ interface BetRow {
   result: string;
   boostType: string;
   placedAt: string; // ISO
+  americanOdds?: number | null;
+  evAtPlacement?: number | null;
 }
 
 interface BookLite {
@@ -152,6 +160,12 @@ export function AnalyticsClient({ bets, books }: Props) {
   const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const HOURS = Array.from({ length: 24 }, (_, h) => h);
   const HOUR_CELL = 20; // px — must match body cell width
+
+  // Derived analytics (Phase D)
+  const evLeak = computeEvLeak(bets);
+  const slippage = computeSlippageByBook(bets, books);
+  const latestGap =
+    evLeak.length > 0 ? (evLeak[evLeak.length - 1]?.gap ?? 0) : 0;
 
   return (
     <div className="mx-auto max-w-[1320px] px-6 py-6">
@@ -485,6 +499,122 @@ export function AnalyticsClient({ bets, books }: Props) {
               </span>
             </div>
           </div>
+        </SurfaceCard>
+      </div>
+
+      {/* EV leak + slippage — Phase D */}
+      <div className="mb-5 grid grid-cols-3 gap-5">
+        <SurfaceCard
+          title="EV leak"
+          subtitle={`Theoretical vs realized · current gap ${formatMoney(latestGap, { sign: true })}`}
+          className="col-span-2"
+        >
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={evLeak}
+                margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
+              >
+                <CartesianGrid
+                  stroke="var(--border)"
+                  strokeDasharray="2 4"
+                  vertical={false}
+                />
+                <XAxis dataKey="t" {...AXIS} />
+                <YAxis
+                  {...AXIS}
+                  tickFormatter={(v) => formatMoneyShort(v)}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--surface-raised)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    fontSize: 11,
+                    fontFamily: "var(--font-mono)",
+                  }}
+                  formatter={(v: number, name: string) => [
+                    formatMoney(v),
+                    name,
+                  ]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="theoretical"
+                  stroke="var(--accent)"
+                  strokeWidth={2}
+                  dot={false}
+                  name="Theoretical"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="realized"
+                  stroke="var(--profit)"
+                  strokeWidth={2}
+                  dot={false}
+                  name="Realized"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-3 flex items-center justify-center gap-6 text-[11px]">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-3 rounded-[1px] bg-accent" />
+              <span className="text-text-dim">Theoretical EV</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-3 rounded-[1px] bg-profit" />
+              <span className="text-text-dim">Realized P&amp;L</span>
+            </span>
+          </div>
+        </SurfaceCard>
+
+        <SurfaceCard
+          title="Slippage per book"
+          subtitle="Edge lost per $1 staked"
+        >
+          {slippage.length === 0 ? (
+            <div className="py-8 text-center text-[12px] text-text-faint">
+              No bets yet
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {slippage.slice(0, 8).map((s) => {
+                const max = Math.max(
+                  ...slippage.map((x) => Math.abs(x.avgEdgeLost)),
+                  0.01,
+                );
+                const width = (Math.abs(s.avgEdgeLost) / max) * 100;
+                return (
+                  <div key={s.bookId}>
+                    <div className="mb-1 flex items-center justify-between text-[11px]">
+                      <span className="text-text-dim">{s.name}</span>
+                      <span
+                        className={cn(
+                          "mono-num font-semibold",
+                          s.avgEdgeLost >= 0 ? "text-loss" : "text-profit",
+                        )}
+                      >
+                        {(s.avgEdgeLost * 100).toFixed(2)}¢
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-surface-sunken">
+                      <div
+                        className={cn(
+                          "h-full rounded-full",
+                          s.avgEdgeLost >= 0 ? "bg-loss" : "bg-profit",
+                        )}
+                        style={{ width: `${width}%` }}
+                      />
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-text-faint">
+                      {s.betCount} bets
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </SurfaceCard>
       </div>
     </div>

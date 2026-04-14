@@ -19,6 +19,8 @@ export default async function AnalyticsPage() {
         result: b.result,
         boostType: b.boostType,
         placedAt: b.placedAt.toISOString(),
+        americanOdds: b.americanOdds,
+        evAtPlacement: b.evAtPlacement,
       }))}
       books={books.map((b) => ({
         id: b.id,
