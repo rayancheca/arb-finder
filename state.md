@@ -1,116 +1,130 @@
 # state.md
 
 ## Status
-ALL PHASES A–H COMPLETE. Ready for localhost testing + Vercel/Railway deploy.
-Dev server is currently running at http://localhost:3000 and every route renders 200.
-
-## Project
-arb-finder — cross-book sportsbook arbitrage + promo-boost finder
+PAUSED mid-debug. All services killed. Project is in a clean state with
+real FanDuel data + seeded demo data both present in the SQLite DB.
+Ready to resume testing the moment the user reboots Claude in this folder.
 
 ## Session count
-2
+2 (ongoing)
 
-## What shipped this session (A → H)
+## ⭐ RESUME GREETING — SAY THIS FIRST NEXT SESSION ⭐
 
-### Phase A — Real data layer (live)
-- Python 3.14 worker installed, pytest 15/15 green
-- 30-team NBA canonical resolver + rapidfuzz fuzzy fallback
-- 5-step event matcher: BookEventRef → canonical key → ±15 min window → create → review queue
-- 5 HTTP scrapers: DraftKings (curl_cffi stealth), FanDuel (httpx), BetMGM (env access id), Caesars (curl_cffi stealth), BetRivers (cageCode 212, ny.betrivers.com)
-- Pipeline: asyncio.gather, per-book transactions, ScrapeRun rows, arb recomputation every cycle
-- Python port of engine arb-standard math (pairs home×away + over×under across books)
-- APScheduler 5-min cadence, circuit breaker with exponential backoff (cap 1h)
-- CLI: `doctor` / `cycle` / `run` subcommands, all green
-- **Live-verified**: FanDuel returns 8 real NBA events + 48 selections, matched canonically
-- **Known geo-block**: DK, Caesars 403 from non-NY IPs even through TLS spoofing — will work from Rayan's NY home network
+When the user returns to this folder, start your response with a short
+status summary AND the exact question you last asked them, verbatim:
 
-### Phase B — Boosts CRUD + auto-detect
-- Server Actions (create/update/toggle/delete) with Zod validation
-- Radix Dialog form with field-level errors, useTransition loading state
-- Boosts page: real CRUD, empty state, disabled-dim, live expiry countdown
-- Worker: `arb_worker.boosts.auto_detect` Playwright persistent-context framework
-- CLI: `detect-boosts <book>` and `login <book>` subcommands
+> **Welcome back. Last session I got live FanDuel data flowing to localhost,
+> then you asked me to kill everything and save state. The dev server and
+> Python worker are both stopped. The DB still has 20 events (12 seeded +
+> 8 real NBA games from FanDuel) and 5 seeded demo arbs.
+>
+> The last thing I asked you before you paused was:
+>
+> 1. Does real FanDuel data show up in /search for real NBA teams?
+> 2. Does the dashboard still show 5 arbs?
+> 3. Any new console errors?
+>
+> Also pending from the session before: **your hydration error, the
+> analytics modal positioning bug, and the Dialog.Title accessibility
+> warnings** — I fixed all three in round 3 (commit 060a15f) but you
+> hadn't hard-refreshed yet to verify.
+>
+> Want me to bring the dev server + worker back up so you can test?
+> Or should we tackle something else first?**
 
-### Phase C — Deep links + Chrome MV3 extension
-- `lib/deep-links.ts` — per-book URL builders (FanDuel URL-level, others extension-assisted)
-- `packages/extension/` — full MV3 extension (builds via esbuild to `dist/`)
-- Service worker handles fill-betslip messages, opens target book, stashes intent
-- Per-book content scripts (FD, DK, MGM, CZR, BR) — select outcome by label, fill stake input
-- Popup UI with status dots + pairing token input
-- `pnpm --filter @arb/extension run build` produces the unpacked extension
+After the user answers, pick up from whichever branch they point you at.
 
-### Phase D — Real history import + analytics upgrade
-- `lib/excel-import.ts` — fuzzy column detector parses profit tracker and bet365 trade sheets
-- `/import` route with drag-drop upload, shows imported/skipped/warnings/sheets-seen
-- `lib/analytics-derivations.ts` — computeEvLeak, computeSlippageByBook, computeLearnedCashRates (replaces 0.65 default once ≥10 settled boosted bets on a book)
-- Analytics gains EV-leak LineChart (theoretical vs realized) + per-book slippage bars
+## What was running (now stopped)
+- Next.js dev server (pid was 556) — stopped
+- Python arb_worker scheduler (pid was 462) — stopped
+- Background cycle was polling FanDuel every 5 min; last successful
+  tick wrote 48 real selections for 8 NBA games
 
-### Phase E — Deploy config
-- `db/schema.postgres.prisma` — prod Neon mirror of SQLite schema
-- `apps/web/package.json` — `build:prod`, `prisma:*:prod`, `seed:prod` scripts
-- `vercel.json` — `pnpm --filter web run build:prod`, iad1 region
-- `apps/web/app/api/health/route.ts` — `SELECT 1` + book count, returns 503 on DB error
-- `apps/worker/Dockerfile` — python:3.12-slim, optional Chromium via INSTALL_CHROMIUM arg
-- `apps/worker/railway.json` — DOCKERFILE builder, ON_FAILURE restart
-- `.env.example` — every required key documented
-- `DEPLOY.md` — complete walkthrough: Neon schema push → vercel login/env/deploy → railway init/up/variables → smoke-test curls → rollback
+## Git state
+- Branch: `main`
+- Last commit: `8798d4c` — fix(worker): scheduler event loop + preserve
+  seed arbs on recompute
+- Fully pushed to `github.com/rayancheca/arb-finder`
+- Working tree clean
 
-### Phase F — bet365 / Fanatics / ESPN BET (Playwright)
-- `playwright_base.py` — persistent-context session opener, human_mouse_move, human_scroll, add_init_script stealth patches
-- Three scrapers: bet365 (shadow DOM walker), Fanatics (__NEXT_DATA__ extractor), ESPN BET (DOM count)
-- Lazy playwright import so installs without [stealth] don't crash
-- Registered in SCRAPER_REGISTRY but `enabled=False` by default — Rayan flips them on after `arb-worker login <book>`
+## Database state (SQLite at db/dev.db)
+- 8 books
+- 20 events = 12 seeded + 8 REAL FanDuel NBA games
+- 264 selections = 216 seeded + 84 real FanDuel odds
+- 5 seeded demo arbs (hand-crafted in db/seed.ts, preserved by the
+  selective-delete fix in recompute_arbs.py)
+- 120 seeded historical bets (for analytics charts)
+- Real NBA events currently in the DB (pulled from FanDuel's live API):
+  - Charlotte Hornets vs Miami Heat
+  - Cleveland Cavaliers vs Toronto Raptors
+  - Phoenix Suns vs Portland Trail Blazers
+  - LA Clippers vs Golden State Warriors
+  - New York Knicks vs Atlanta Hawks
+  - Los Angeles Lakers vs Houston Rockets
+  - Philadelphia 76ers vs Orlando Magic
+  - Denver Nuggets vs Minnesota Timberwolves
 
-### Phase G — Quality of life
-- ⌘K/Ctrl+K `CommandPalette` (cmdk) — routes list with icons, esc to close
-- `ThemeToggle` — dark/light with icon morph; inline init script in layout.tsx prevents flash
-- Full light-theme OKLCH token override in globals.css
-- `MobileNav` — fixed bottom bar at <md, 5 primary routes
-- Sidebar hidden on mobile (`hidden md:flex`)
-- `/settings` page — ScrapeRun-backed scraper health, risk defaults form (slippage, Kelly, min net return, webhook URLs), reset button, theme toggle card
-- `DashboardKeyboardNav` — j/k/enter across `[data-arb-row]`, ignores input focus, scrolls into view
-- Worker: `notifications.py` — Slack Block Kit + Discord embed formatters, ARB_NOTIFY_THRESHOLD (default 5%), fire-and-forget urllib POST with 5s timeout
+## To bring it back up (single command each)
+```bash
+# Dev server
+pnpm --filter web dev
 
-### Phase H — Analytics interactive polish (Rayan's ask)
-- `InteractiveCard` — radix Dialog wrapping a preview tile that morphs via framer-motion `layoutId` into a centered modal. Pirouette rotate [0, 2, -2, 0] with spring physics. Shared layoutIds on card, title, and preview for continuous morph.
-- `DrilldownTabs` — radix Tabs with icon triggers, per-tab framer-motion mount-in fade
-- `DataGrid` — generic sortable table used by every drill-down's Table tab
-- `charts.tsx` — extracted chart subcomponents (BankrollCurve, ProfitByBook, Histogram, EvLeak, DayHourHeatmap) so the same chart renders in preview and full modal
-- **Every one** of the 7 analytics sections now has Chart + Table + Raw tabs in an animated modal
+# Python worker (continuously polls FanDuel every 5 min)
+cd apps/worker && source .venv/bin/activate && python -m arb_worker run
 
-## Back-test status (final)
-- `pnpm --filter @arb/engine test` — **52/52 green**
-- `cd apps/worker && .venv/bin/pytest` — **15/15 green**
-- `pnpm --filter web build` — **exit 0**
-- `pnpm --filter web exec tsc --noEmit` — **exit 0**
-- Live routes: /, /search, /boosts, /bankroll, /analytics, /import, /settings, /opp/arb_2, /api/health — **all 200**
-- Dev server running at http://localhost:3000 (pid tracked in /tmp/arb_dev.log)
-- Chrome extension builds clean via `pnpm --filter @arb/extension run build`
-
-## What Rayan still needs to do
-1. **Rotate the Neon password** (you pasted it in chat in plain text)
-2. Put the rotated DATABASE_URL in `apps/web/.env` locally
-3. `vercel login && vercel link && vercel env add DATABASE_URL production && vercel --prod`
-4. `railway login && cd apps/worker && railway init && railway up && railway variables set DATABASE_URL=... BETMGM_ACCESS_ID=...`
-5. Load `packages/extension/dist/` in chrome://extensions as an unpacked extension
-6. Click into every analytics card, confirm the expand animation + tab views behave as expected
-
-## Decisions log
-- **Python arb math port** over forked Node subprocess — 5-min cadence × hundreds of markets makes cold-start latency too expensive
-- **Two Prisma schemas** (`schema.prisma` + `schema.postgres.prisma`) — lockstep, but avoids Prisma's runtime provider lock
-- **curl_cffi stealth path** for DK/CZR — beats Akamai TLS fingerprinting but still requires NY IP
-- **framer-motion layoutId** over cross-fade for card-to-modal — the continuous morph is why it feels alive
-- **DataGrid is generic** — not constrained to `Record<string, unknown>` so it works with any row type without casting
-- **Phase F Playwright scrapers enabled=False** — they'll take out the whole cycle if Chromium isn't installed; opt-in only
-
-## Rayan's asks (verbatim this session)
-1. "continue where you left off. i want you to complete the entire project … always backtest … publish to github … publish to vercel … run localhost and i will test all features we will debug"
-2. "make the analytics section much more polished and interactive and visual … every card clickable with deeper info when clicked and cool animations … pirouette then expand to center … view as chart/table/graph"
-3. (on accounts) "i have made neon and railway accounts i already have a vercel account … also do you need my credentials for vercel neon and railway"
-4. "i will leave this running in the background whilst i sleep"
-
-## Commit log (this session)
+# One-shot FanDuel refresh (no scheduler)
+cd apps/worker && .venv/bin/python -m arb_worker cycle
 ```
+
+## Known-unresolved issues (user reported, not yet confirmed fixed)
+1. **Hydration error** — "data-theme='dark'" mismatch on `<html>`. Fixed in
+   commit 060a15f via `suppressHydrationWarning` on the html element + the
+   InteractiveCard rewrite. User hasn't hard-refreshed to verify.
+2. **Analytics modal opening in bottom-right corner instead of center** —
+   Fixed in commit 060a15f by scrapping framer-motion layoutId entirely on
+   the modal and using a `fixed inset-0 flex items-center justify-center`
+   centering container with a scale-in + pirouette animation. User hasn't
+   verified after the round-3 push.
+3. **DialogContent requires DialogTitle** (x4 console errors) — Fixed in
+   commit 060a15f by replacing the raw motion.h2 with proper
+   `<Dialog.Title>` in InteractiveCard. Not yet verified.
+
+## What's on deploy / new-work pipeline
+- Vercel + Neon Postgres + Railway deploy waits for user's browser
+  OAuth CLI login (documented in DEPLOY.md, config in vercel.json,
+  apps/worker/railway.json, db/schema.postgres.prisma)
+- **Rotate the Neon password FIRST** — user pasted it in plain text
+  last session; new one shouldn't go into any committed file
+
+## Known scraper limits (tested, not bugs)
+- **FanDuel**: works perfectly from this machine. Real data flowing.
+- **DraftKings** + **Caesars**: geo-block non-NY IPs with HTTP 403 even
+  through curl_cffi Chrome TLS impersonation. Will work from user's
+  home network in NY.
+- **BetMGM**: needs `BETMGM_ACCESS_ID` env var from devtools on
+  sports.ny.betmgm.com
+- **BetRivers**: returns 200 but 0 events — leagueId=1149 isn't NBA on
+  their current schema. Needs a quick fix pass to find the right value.
+- **bet365 / Fanatics / ESPN BET**: Phase F Playwright scrapers exist
+  but `enabled=False` by default. Opt-in via
+  `python -m arb_worker login <book>` once user has logged in manually.
+
+## Immediate next actions (in priority order)
+1. Start dev server + worker, user hard-refreshes and confirms fixes
+2. If hydration error / analytics modal / DialogTitle still broken →
+   another round of fixes
+3. Once all three confirmed fixed, user decides: test more locally or
+   push to Vercel now?
+4. Fix BetRivers leagueId (quick win, gives us a second live book)
+5. Walk user through Vercel/Railway deploy
+
+## Commit log (full session 2)
+```
+8798d4c fix(worker): scheduler event loop + preserve seed arbs on recompute
+060a15f fix(analytics): modal positioning + Dialog.Title + demo-data controls
+1da9a4d fix(ui): hydration error + analytics card width + search best-bet
+7a43740 fix(ui): kill Import, fix TopBar + Search + Analytics layout
+6a575f0 docs(state): full session 2 summary — all phases A-H complete
 a37b0d7 chore: gitignore SQLite WAL + SHM files
 258e294 feat(analytics): Phase H — interactive drill-down cards
 9274a58 feat(qol): Phase G — command palette, settings, theme, mobile, alerts
@@ -124,14 +138,51 @@ b76f7f8 feat(worker+analytics): scaffold Phase A data layer + fix day/hour heatm
 0583335 feat: ship session 1 mockup — full UI, engine, seed data
 ```
 
-## Resume instructions (if credits run out before deploy)
-1. `cd /Users/rayankarimcheca/Desktop/ClaudeProjects/projects/arb-finder`
-2. Dev server likely still running; if not: `pnpm --filter web dev`
-3. Git is fully pushed through Phase H at `a37b0d7`
-4. Read this file + DEPLOY.md
-5. The only remaining step is `vercel --prod` + `railway up`, which requires Rayan's browser OAuth
+## Rayan's directives (verbatim, for tone calibration)
+- "continue where you left off. i want you to complete the entire project"
+- "run multiple agents to debug and test i then ask me quesitons"
+- "search feature is not clickable idk why theres an improt tab we dont
+  need that the analytics tab is broken all squares all all oer the
+  plave and diffferent sizes. sitre is throung a bunch of errors"
+- "its totally broken now" (after stale cache issue — resolved with
+  dev-server restart)
+- "can you get the live data flowing right now so i can test on localhost"
+- "close the dev. kill the server. i will come bac to this projects later.
+  for now remember your state and the last thing you ask me, next time
+  i boot up claude in this folder i wqant you to tell me the last thing
+  you said and well continue where we left off"
 
-## Blockers
-- Vercel + Railway deploys need Rayan's browser-OAuth CLI login (interactive, can't do from here)
-- Neon password **must be rotated** before the new one is used anywhere
-- DK/CZR/BetRivers live scraping still geo-blocked from current network — works when Rayan runs worker from NY home
+## Back-test snapshot (last confirmed green)
+- `pnpm --filter @arb/engine test` — 52/52 passed
+- `cd apps/worker && .venv/bin/pytest` — 15/15 passed
+- `pnpm --filter web build` — exit 0
+- `pnpm --filter web exec tsc --noEmit` — exit 0
+- Live routes tested: /, /analytics, /search?q=Lakers, /settings,
+  /boosts, /bankroll, /api/health — all 200
+
+## Blockers (external, require user action)
+- DK/CZR geo block — needs NY residential IP
+- BetMGM access ID — needs user devtools copy
+- Neon password rotation — user pasted in chat, must rotate
+- Vercel/Railway login — interactive OAuth, can't do remotely
+
+## File structure reminder
+```
+arb-finder/
+├── apps/
+│   ├── web/                 Next 15 App Router
+│   └── worker/              Python 3.14 scrapers + scheduler
+├── packages/
+│   ├── engine/              TS arb math, 52/52 tests
+│   └── extension/           Chrome MV3 bet-slip autofill
+├── db/
+│   ├── schema.prisma        SQLite (dev)
+│   ├── schema.postgres.prisma Neon (prod)
+│   ├── seed.ts              8 books, 12 events, 5 arbs, 120 bets
+│   └── dev.db               live SQLite
+├── vercel.json              deploy config
+├── DEPLOY.md                step-by-step Vercel/Neon/Railway walkthrough
+├── CLAUDE.md                project spec
+├── state.md                 THIS FILE — always update before pausing
+└── README.md
+```
