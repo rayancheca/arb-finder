@@ -1,16 +1,15 @@
-// arb-finder data model
-// SQLite locally, Postgres in prod — swap via DATABASE_URL.
+// arb-finder data model — Postgres (Neon) production schema.
+// Mirror of db/schema.prisma with the datasource provider switched.
+// KEEP THESE TWO FILES IN LOCKSTEP — any model change lands in both.
 
 generator client {
   provider = "prisma-client-js"
 }
 
-// Local dev uses SQLite. Production uses the Postgres schema at
-// db/schema.postgres.prisma which has identical models. Vercel's build
-// command regenerates from the Postgres schema; local dev keeps SQLite.
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Sport {

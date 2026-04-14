@@ -6,11 +6,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate --schema=../../db/schema.prisma && next build",
+    "build:prod": "prisma generate --schema=../../db/schema.postgres.prisma && prisma db push --schema=../../db/schema.postgres.prisma --skip-generate --accept-data-loss && next build",
     "start": "next start",
     "lint": "next lint",
     "prisma:generate": "prisma generate --schema=../../db/schema.prisma",
+    "prisma:generate:prod": "prisma generate --schema=../../db/schema.postgres.prisma",
     "prisma:push": "prisma db push --schema=../../db/schema.prisma",
-    "seed": "DATABASE_URL=file:$PWD/../../db/dev.db tsx ../../db/seed.ts"
+    "prisma:push:prod": "prisma db push --schema=../../db/schema.postgres.prisma --accept-data-loss",
+    "seed": "DATABASE_URL=file:$PWD/../../db/dev.db tsx ../../db/seed.ts",
+    "seed:prod": "tsx ../../db/seed.ts"
   },
   "dependencies": {
     "@arb/engine": "workspace:*",
