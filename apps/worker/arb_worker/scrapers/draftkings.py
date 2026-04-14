@@ -15,11 +15,19 @@ we don't recognize is skipped silently — we never write junk rows.
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 
 from ..db import RawEvent, RawSelection
 from ..logging_setup import get_logger
-from .base import ScrapeResult, ScraperError, SportsbookScraper, get_json, parse_iso
+from .base import (
+    ScrapeResult,
+    ScraperError,
+    SportsbookScraper,
+    parse_iso,
+    stealth_get_json,
+)
 
 log = get_logger("scraper.draftkings")
 
@@ -68,7 +76,16 @@ class DraftKingsScraper(SportsbookScraper):
     name = "DraftKings"
 
     async def fetch(self, client: httpx.AsyncClient) -> ScrapeResult:
-        payload, status = await get_json(client, DK_URL)
+        # DraftKings sits behind Akamai — vanilla httpx TLS → 403. Route
+        # through curl_cffi's Chrome impersonation via a worker thread so we
+        # don't block the asyncio loop.
+        headers = {
+            "Origin": "https://sportsbook.draftkings.com",
+            "Referer": "https://sportsbook.draftkings.com/leagues/basketball/nba",
+        }
+        payload, status = await asyncio.to_thread(
+            stealth_get_json, DK_URL, headers=headers
+        )
         result = ScrapeResult(http_status=status)
 
         event_group = payload.get("eventGroup") or {}

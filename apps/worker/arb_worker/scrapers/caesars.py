@@ -8,11 +8,19 @@ Endpoint (NBA league id is stable):
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 
 from ..db import RawEvent, RawSelection
 from ..logging_setup import get_logger
-from .base import ScrapeResult, ScraperError, SportsbookScraper, get_json, parse_iso
+from .base import (
+    ScrapeResult,
+    ScraperError,
+    SportsbookScraper,
+    parse_iso,
+    stealth_get_json,
+)
 
 log = get_logger("scraper.caesars")
 
@@ -29,7 +37,10 @@ class CaesarsScraper(SportsbookScraper):
     name = "Caesars"
 
     async def fetch(self, client: httpx.AsyncClient) -> ScrapeResult:
-        payload, status = await get_json(client, CZR_URL, params=CZR_PARAMS)
+        # Caesars also sits behind a TLS-fingerprint WAF. Same pattern as DK.
+        payload, status = await asyncio.to_thread(
+            stealth_get_json, CZR_URL, params=CZR_PARAMS
+        )
         result = ScrapeResult(http_status=status)
 
         events = payload.get("competitions") or payload.get("events") or []

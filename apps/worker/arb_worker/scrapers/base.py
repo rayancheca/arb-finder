@@ -124,6 +124,59 @@ async def get_json(
         raise ScraperError(f"non-JSON response from {url}: {exc}") from exc
 
 
+def stealth_get_json(
+    url: str,
+    *,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 20.0,
+    impersonate: str = "chrome131",
+) -> tuple[dict, int]:
+    """
+    Blocking TLS-fingerprint-spoofed GET via curl_cffi.
+
+    Books like DraftKings and Caesars sit behind Akamai and reject vanilla
+    httpx TLS signatures with 403. curl_cffi impersonates real Chrome at the
+    TLS layer which consistently defeats those WAFs. Called from
+    asyncio-bound scrapers via `asyncio.to_thread(...)` so we don't block
+    the event loop.
+
+    Still requires the caller to be in the book's licensed jurisdiction
+    (US-NY) — TLS spoofing does not bypass geo-IP.
+    """
+    try:
+        from curl_cffi import requests as cffi_requests
+    except ImportError as exc:
+        raise ScraperError(
+            "curl_cffi not installed — run `pip install curl_cffi` "
+            "to enable stealth-mode scrapers"
+        ) from exc
+
+    merged = {**DEFAULT_HEADERS, **(headers or {})}
+    try:
+        response = cffi_requests.get(
+            url,
+            params=params,
+            headers=merged,
+            timeout=timeout,
+            impersonate=impersonate,
+        )
+    except Exception as exc:  # noqa: BLE001 — curl_cffi raises opaque errors
+        raise ScraperError(f"stealth GET failed for {url}: {exc}") from exc
+
+    if response.status_code == 429:
+        raise ScraperError(f"rate-limited by {url}", http_status=429)
+    if response.status_code >= 400:
+        raise ScraperError(
+            f"stealth {response.status_code} from {url}: {response.text[:200]}",
+            http_status=response.status_code,
+        )
+    try:
+        return response.json(), response.status_code
+    except ValueError as exc:
+        raise ScraperError(f"non-JSON stealth response from {url}: {exc}") from exc
+
+
 def parse_iso(value: str) -> datetime:
     """Parse ISO timestamps that books return, tolerant of `Z` suffix."""
     if value.endswith("Z"):

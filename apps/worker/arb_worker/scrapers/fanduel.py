@@ -35,18 +35,31 @@ FD_PARAMS = {
     "timezone": "America/New_York",
 }
 
-MONEYLINE_HINTS = {"moneyline", "match odds", "match winner"}
-SPREAD_HINTS = {"spread", "point spread", "handicap"}
-TOTAL_HINTS = {"total", "total points", "over/under"}
+# FanDuel uses SCREAMING_SNAKE_CASE for marketType. The full set for NBA is
+# larger than we care about; we match the 3 specific 2-way markets we arb on.
+FD_MARKET_TYPES: dict[str, str] = {
+    "MONEY_LINE": "moneyline",
+    "MATCH_ODDS": "moneyline",
+    "MATCH_HANDICAP_(2-WAY)": "spread",
+    "MATCH_HANDICAP": "spread",
+    "POINT_SPREAD": "spread",
+    "TOTAL_POINTS_(OVER/UNDER)": "total",
+    "TOTAL_POINTS": "total",
+    "TOTAL": "total",
+}
 
 
-def _classify_market(market_name: str) -> str | None:
-    n = market_name.lower()
-    if any(h in n for h in MONEYLINE_HINTS):
+def _classify_market(market_type: str) -> str | None:
+    if not market_type:
+        return None
+    mt = market_type.upper()
+    if mt in FD_MARKET_TYPES:
+        return FD_MARKET_TYPES[mt]
+    if "MONEY_LINE" in mt:
         return "moneyline"
-    if any(h in n for h in SPREAD_HINTS):
+    if "HANDICAP" in mt and "2-WAY" in mt:
         return "spread"
-    if any(h in n for h in TOTAL_HINTS):
+    if "TOTAL" in mt and "OVER" in mt:
         return "total"
     return None
 
@@ -129,14 +142,22 @@ class FanDuelScraper(SportsbookScraper):
             if event_id not in event_meta:
                 continue
             home, away = event_meta[event_id]
-            market_name = market.get("marketType") or market.get("marketName") or ""
-            market_type = _classify_market(market_name)
+            market_type = _classify_market(market.get("marketType") or "")
             if market_type is None:
                 continue
-            line_value = market.get("handicap")
             for runner in market.get("runners") or []:
                 wro = runner.get("winRunnerOdds") or {}
-                american = _parse_american(wro.get("americanDisplayOdds"))
+                # FanDuel nests american odds two levels deep:
+                #   winRunnerOdds.americanDisplayOdds.americanOddsInt (int)
+                display = wro.get("americanDisplayOdds") or {}
+                american_raw = (
+                    display.get("americanOddsInt")
+                    if isinstance(display, dict)
+                    else display
+                )
+                if american_raw is None:
+                    american_raw = display.get("americanOdds") if isinstance(display, dict) else None
+                american = _parse_american(american_raw)
                 if american is None:
                     continue
                 runner_name = runner.get("runnerName") or ""
@@ -148,6 +169,14 @@ class FanDuelScraper(SportsbookScraper):
                 )
                 if side is None:
                     continue
+                # handicap lives on the runner itself (per-side line) or on the
+                # market. Prefer runner-level (correct for spread and total).
+                runner_handicap = runner.get("handicap")
+                line_value = (
+                    runner_handicap
+                    if runner_handicap not in (None, 0)
+                    else market.get("handicap")
+                )
                 result.selections.append(
                     RawSelection(
                         book_key=self.book_key,

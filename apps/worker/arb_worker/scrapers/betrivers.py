@@ -18,13 +18,16 @@ from .base import ScrapeResult, ScraperError, SportsbookScraper, get_json, parse
 
 log = get_logger("scraper.betrivers")
 
-BR_URL = "https://nj.betrivers.com/api/service/sportsbook/offering/listview/events"
+BR_URL = "https://ny.betrivers.com/api/service/sportsbook/offering/listview/events"
+# cageCode maps to the specific state operator. BetRivers rotates these
+# occasionally — if the scraper starts 400-ing with "No cage configuration
+# found", sweep the integer range 1..500 to find the current NY value.
+# As of 2026-04 the NY cage code is 212.
 BR_PARAMS = {
-    "cageCode": "271",
-    "type": "league",
-    "primaryMarketOnly": "false",
-    "state": "NY",
+    "cageCode": "212",
+    "type": "PREMATCH",
     "leagueId": "1149",
+    "primaryMarketOnly": "false",
 }
 
 

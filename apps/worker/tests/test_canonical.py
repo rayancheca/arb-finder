@@ -23,8 +23,9 @@ def test_resolve_team_exact_and_alias() -> None:
 
 
 def test_resolve_team_fuzzy_fallback() -> None:
-    # Typo: "Knickerboockers" — should still land on Knicks via fuzzy.
-    assert resolve_team("New York Knickerboockers") == "new york knicks"
+    # Real-world drift: "Nw York Knicks" (single char typo) should still land
+    # on the canonical name via the rapidfuzz token_set_ratio fallback.
+    assert resolve_team("Nw York Knicks") == "new york knicks"
 
 
 def test_resolve_team_unknown() -> None:
