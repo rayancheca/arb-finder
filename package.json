@@ -12,6 +12,7 @@
     "db:studio": "pnpm --filter web exec prisma studio --schema=../../db/schema.prisma"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "typescript": "5.7.3"
   },
   "pnpm": {

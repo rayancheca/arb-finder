@@ -4,9 +4,51 @@ Cross-book sportsbook arbitrage + promo-boost finder with Kelly bankroll optimiz
 
 Replaces the manual Excel-calculator workflow of cross-referencing lines across every NY sportsbook with a dense, finance-terminal-style web UI that surfaces every profitable 2-way trade in real time, amplifies them with active promos (free bets, no-sweats, site credits, profit boosts), and one-clicks into the pre-filled bet slip on each book.
 
+## Live walkthrough
+
+The app running locally with real FanDuel NBA odds + seeded demo data.
+
+**1. Dashboard — ranked arb opportunities across all 8 books**
+![Dashboard](docs/screenshots/01-dashboard.png)
+5 live arbs ranked by net return. KPI strip shows bankroll, ROI, win rate, and avg return. Boost-amplified rows get an amber FREE BET / NO SWEAT badge.
+
+**2. Dashboard filtered by sport**
+![Filtered dashboard](docs/screenshots/02-dashboard-filtered.png)
+URL-persisted sport/book/boost filters — shareable and browser-back-safe.
+
+**3. Search — Lakers, pulling live FanDuel data**
+![Search](docs/screenshots/05-search-lakers.png)
+Real FanDuel NBA lines for LA Lakers games. Best line on each side highlighted in green. Combined edge shown inline — green means arb exists, red means the book takes over.
+
+**4. Search — Knicks**
+![Search Knicks](docs/screenshots/04-search-knicks.png)
+Moneyline grid across all 8 NY sportsbooks. "65.71% OPEN OPP →" button jumps straight to the detail page.
+
+**5. Bankroll — Kelly calculator + per-book balances**
+![Bankroll](docs/screenshots/07-bankroll.png)
+Kelly calculator with full/½/¼/custom fraction. Risk-of-ruin simulator (5,000 runs, 200-bet horizon). Per-book idle vs exposed bars with rebalance suggestions.
+
+**6. Boosts — active promo manager**
+![Boosts](docs/screenshots/06-boosts.png)
+CRUD interface for tracking free bets, no-sweats, site credits, and profit boosts per book.
+
+**7. Analytics — full P&L dashboard**
+![Analytics](docs/screenshots/08-analytics.png)
+6 KPI cards (total profit, ROI, bets placed, win rate, avg EV, EV capture efficiency) + bankroll curve.
+
+**8. Analytics — profit breakdowns and heatmaps**
+![Analytics charts](docs/screenshots/09-analytics-charts.png)
+Profit-by-book bars, profit-by-boost-type bars, bet-size histogram, day-of-week × hour profit heatmap, EV leak chart, slippage-per-book.
+
+**9. Settings**
+![Settings](docs/screenshots/10-settings.png)
+Theme toggle, Kelly fraction default, staleness thresholds, demo-data controls.
+
+---
+
 ## Status
 
-**Session 1 — mockup complete.** The full UI is live against SQLite + realistic seeded NBA data. The arb engine is feature-complete and Excel-parity tested (52 passing tests). No real scrapers yet — those land in session 2.
+**Session 2 — live FanDuel scraper running.** Real NBA games flow in every 5 minutes via the Python worker. Full UI is live. The arb engine is feature-complete and Excel-parity tested (52 passing tests).
 
 ## What's working
 
