@@ -453,3 +453,34 @@ No Phase 0 stop conditions from the refactor prompt are triggered. The
 "no `scrapers/` directory yet" condition is technically true but the
 intended functionality lives under `apps/worker/` — that's the directory
 divergence resolved by question 1 above, not a blocker.
+
+---
+
+## 14. Production-default scraper state (post-cloud-cleanup)
+
+Deploy target is Vercel (web) + Railway (worker), neither of which runs
+from a NY residential IP. A cloud-viability audit confirmed that three of
+the previously-default-enabled JSON books cannot fetch from Railway's AWS
+egress. They are now `enabled=False` in `apps/worker/arb_worker/config.py`
+so the worker boots cleanly in production instead of burning the circuit
+breaker every cycle. FanDuel and BetMGM stay on by default and define the
+2-book production reality.
+
+| Book | `enabled` | Why | How to re-enable |
+|---|---|---|---|
+| FanDuel (`fd` / `fanduel`) | `True` | Public `_ak` access key, no Akamai posture, fetches cleanly from cloud IPs. | n/a — keep on. |
+| BetMGM (`mgm` / `betmgm`) | `True` | Public CDS endpoint; only blocker is the rotating `BETMGM_ACCESS_ID` env var, which is a user-supplied secret not a geo-IP issue. | Refresh `BETMGM_ACCESS_ID` from devtools (`x-bwin-accessid` query param) when it rotates. |
+| DraftKings (`dk` / `draftkings`) | `False` | Akamai WAF + AWS IP catalog → 403 from cloud egress even with curl_cffi Chrome131 impersonation. Stealth TLS does not defeat the geo-IP block. | Run the worker locally from Rayan's NY home network (flip `enabled=True`), or wire a NY residential proxy via the `PROXY_ENDPOINT` / `PROXY_USERNAME` / `PROXY_PASSWORD` env vars added to `.env.example`. |
+| Caesars (`caesars` / `caesars`) | `False` | Same Akamai + AWS posture as DK — confirmed 403 from cloud. | Same as DK: NY home network or residential proxy. |
+| BetRivers (`br` / `betrivers`) | `False` | HTTP 200 with 0 events on the previously-hardcoded `leagueId=1149`. Rush Street rotated the NBA leagueId. | Run `python scripts/find-betrivers-leagueid.py` from a NY network to discover the current ID, patch `apps/worker/arb_worker/scrapers/betrivers.py`, then flip `enabled=True`. |
+| bet365 (`b365` / `bet365`) | `False` | Playwright liveness probe works; structured parser is still a stub — emits zero `RawSelection` rows. | Carry-over from Phase F. Build the structured parser, then flip on. Independent of the cloud-IP issue. |
+| Fanatics (`fan` / `fanatics`) | `False` | Same as bet365 — `__NEXT_DATA__` walker detects liveness, no structured rows. | Same: build the parser, flip on. |
+| ESPN BET (`espn` / `espnbet`) | `False` | Same as bet365 — liveness count only, no structured rows. | Same: build the parser, flip on. |
+
+**Net effect.** Production boots with 2 of 8 books live (FanDuel + BetMGM).
+The arb engine still runs because it operates on whichever books emit
+`RawSelection` rows; two books is enough to produce 2-way arbs as long as
+both quote the same NBA market. Re-enabling DK / CZR is a one-line config
+change once a residential proxy is wired or the worker is run from
+Rayan's NY home network. Re-enabling BetRivers is a two-step change:
+discover the new `leagueId` with the helper script, then flip the config.

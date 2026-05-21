@@ -28,11 +28,21 @@ class BookConfig:
     fd_competition_id: int | None = None
 
 
+# Production defaults (post-2026-05 cloud audit):
+# - DraftKings + Caesars 403 from cloud IPs (Akamai WAF + AWS IP catalog),
+#   even with curl_cffi TLS impersonation. Re-enable when running locally
+#   from NY or after wiring a residential proxy (env: PROXY_ENDPOINT/USER/PASS).
+# - BetRivers returns HTTP 200 with 0 events on leagueId=1149. The real NBA
+#   leagueId rotated; run scripts/find-betrivers-leagueid.py from a NY
+#   network to discover the current value, then re-enable.
+# - Playwright books (bet365 / fanatics / espnbet) remain enabled=False —
+#   structured parsers are still stubs that emit zero RawSelection rows.
 BOOKS: tuple[BookConfig, ...] = (
     BookConfig(
         id="dk",
         key="draftkings",
         name="DraftKings",
+        enabled=False,
         dk_event_group=42648,  # NBA
     ),
     BookConfig(
@@ -42,8 +52,8 @@ BOOKS: tuple[BookConfig, ...] = (
         fd_competition_id=10547864,  # NBA
     ),
     BookConfig(id="mgm", key="betmgm", name="BetMGM"),
-    BookConfig(id="caesars", key="caesars", name="Caesars"),
-    BookConfig(id="br", key="betrivers", name="BetRivers"),
+    BookConfig(id="caesars", key="caesars", name="Caesars", enabled=False),
+    BookConfig(id="br", key="betrivers", name="BetRivers", enabled=False),
     # Phase F — flaky, guarded:
     BookConfig(id="b365", key="bet365", name="bet365", enabled=False),
     BookConfig(id="fan", key="fanatics", name="Fanatics", enabled=False),
