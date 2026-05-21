@@ -24,6 +24,33 @@ import { buildDeepLink } from "@/lib/deep-links";
 import { formatMoney, formatPct, formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
+/**
+ * Chrome extension ID for cross-origin runtime messaging. When set, the
+ * web app explicitly addresses the installed extension via
+ * `chrome.runtime.sendMessage(EXTENSION_ID, ...)`. When unset (the common
+ * case in dev), we omit the ID and let Chrome route internally — the
+ * extension's `externally_connectable` manifest entry is what authorizes
+ * the message either way.
+ */
+const EXTENSION_ID: string | undefined =
+  process.env.NEXT_PUBLIC_EXTENSION_ID || undefined;
+
+/**
+ * Minimal local typing for the Chrome runtime message API. We don't depend
+ * on @types/chrome because the surface we touch is tiny and we want this
+ * to compile cleanly in both browser and SSR contexts. `chrome` may be
+ * undefined (no extension installed, or running on Safari/Firefox).
+ */
+interface ChromeRuntimeLike {
+  readonly runtime?: {
+    readonly sendMessage?: (
+      ...args: ReadonlyArray<unknown>
+    ) => Promise<unknown>;
+  };
+}
+
+declare const chrome: ChromeRuntimeLike | undefined;
+
 interface BookLite {
   id: string;
   name: string;
@@ -343,7 +370,7 @@ function PlaceButton({
   stake: number;
   sideLabel: string;
 }) {
-  function handleClick() {
+  async function handleClick() {
     const deepLink = buildDeepLink({
       bookKey: book.key,
       selectionId: sideLabel,
@@ -356,9 +383,41 @@ function PlaceButton({
       );
       return;
     }
-    // For extension-assisted flows we still open the URL; the installed
-    // Chrome extension picks up the intent via chrome.storage.session on
-    // page load. For pure-URL flows (FanDuel) the URL does the work.
+
+    // Best-effort message to the Chrome extension. The extension's service
+    // worker stashes this intent keyed by tab id; the content script picks
+    // it up when the bet-slip page loads. If the extension is not installed
+    // or the message fails, we fall through to opening the URL — the user
+    // can still place manually.
+    //
+    // Message shape matches the FillRequest interface in
+    // packages/extension/src/background/service-worker.ts:20-28.
+    if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+      try {
+        const fillIntent = {
+          type: "fill-betslip" as const,
+          bookKey: book.key,
+          label: sideLabel,
+          // selectionId is sent for parity with the service worker's
+          // FillRequest shape, even though today it carries the human
+          // sideLabel rather than a real provider id (separate ticket).
+          selectionId: sideLabel,
+          stake,
+        };
+        if (EXTENSION_ID) {
+          await chrome.runtime.sendMessage(EXTENSION_ID, fillIntent);
+        } else {
+          await chrome.runtime.sendMessage(fillIntent);
+        }
+      } catch {
+        // Extension not installed or message rejected — that's fine, the
+        // URL fallback below still works.
+      }
+    }
+
+    // Always open the URL: for pure-URL flows (FanDuel) the URL does the
+    // work; for extension-assisted flows the content script reads the
+    // intent stashed above and fills the slip when the page hydrates.
     window.open(deepLink.url, "_blank", "noopener");
   }
   return (

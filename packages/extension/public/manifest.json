@@ -16,6 +16,9 @@
     "service_worker": "background/service-worker.js",
     "type": "module"
   },
+  "externally_connectable": {
+    "matches": ["http://localhost:3000/*", "https://*.vercel.app/*"]
+  },
   "action": {
     "default_title": "arb-finder",
     "default_icon": {
