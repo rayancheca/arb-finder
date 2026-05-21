@@ -23,8 +23,16 @@ BR_URL = "https://ny.betrivers.com/api/service/sportsbook/offering/listview/even
 # occasionally — if the scraper starts 400-ing with "No cage configuration
 # found", sweep the integer range 1..500 to find the current NY value.
 # As of 2026-04 the NY cage code is 212.
+BR_CAGE_CODE = "212"
+
+# TODO(rayan): confirm BetRivers NFL leagueId from devtools — same gap as
+# the historical NBA leagueId discovery. The scraper raises ScraperError
+# until the placeholder is replaced so the circuit breaker can open.
+_NFL_LEAGUE_ID_PLACEHOLDER = "0"
+
+# Back-compat default for any external test that still imports BR_PARAMS.
 BR_PARAMS = {
-    "cageCode": "212",
+    "cageCode": BR_CAGE_CODE,
     "type": "PREMATCH",
     "leagueId": "1149",
     "primaryMarketOnly": "false",
@@ -36,8 +44,49 @@ class BetRiversScraper(SportsbookScraper):
     book_key = "betrivers"
     name = "BetRivers"
 
+    # Per-sport endpoint configuration. `league_id` is the only thing that
+    # changes between sports on this endpoint.
+    SPORT_CONFIGS: dict[str, dict[str, str | bool]] = {
+        "basketball_nba": {
+            "league_id": "1149",
+            "needs_confirmation": False,
+        },
+        "football_nfl": {
+            "league_id": _NFL_LEAGUE_ID_PLACEHOLDER,
+            "needs_confirmation": True,
+        },
+    }
+
+    def __init__(
+        self,
+        *,
+        sport_key: str = "basketball_nba",
+        timeout: float | None = None,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        if sport_key not in self.SPORT_CONFIGS:
+            raise ValueError(
+                f"BetRivers scraper does not support sport {sport_key!r}; "
+                f"known: {sorted(self.SPORT_CONFIGS)}"
+            )
+        self.sport_key = sport_key
+        self.sport_config = self.SPORT_CONFIGS[sport_key]
+
     async def fetch(self, client: httpx.AsyncClient) -> ScrapeResult:
-        payload, status = await get_json(client, BR_URL, params=BR_PARAMS)
+        if self.sport_config.get("needs_confirmation"):
+            raise ScraperError(
+                f"BetRivers {self.sport_key} leagueId is a placeholder "
+                f"({self.sport_config['league_id']!r}). Confirm via devtools "
+                "and update SPORT_CONFIGS."
+            )
+
+        params = {
+            "cageCode": BR_CAGE_CODE,
+            "type": "PREMATCH",
+            "leagueId": str(self.sport_config["league_id"]),
+            "primaryMarketOnly": "false",
+        }
+        payload, status = await get_json(client, BR_URL, params=params)
         result = ScrapeResult(http_status=status)
 
         items = payload.get("items") or payload.get("events") or []
@@ -66,6 +115,7 @@ class BetRiversScraper(SportsbookScraper):
                     home_team=home,
                     away_team=away,
                     commence_time=commence,
+                    sport_key=self.sport_key,
                 )
             )
 
@@ -112,9 +162,13 @@ class BetRiversScraper(SportsbookScraper):
 
         log.info(
             "betrivers_fetched",
+            sport=self.sport_key,
             events=len(result.events),
             selections=len(result.selections),
         )
         if not result.events:
-            raise ScraperError("BetRivers returned no events", http_status=status)
+            raise ScraperError(
+                f"BetRivers returned no events for {self.sport_key}",
+                http_status=status,
+            )
         return result

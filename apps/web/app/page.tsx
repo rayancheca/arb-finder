@@ -22,7 +22,7 @@ export default async function DashboardPage() {
   const opps = await prisma.arbOpp.findMany({
     orderBy: { netReturnPct: "desc" },
     include: {
-      event: true,
+      event: { include: { sport: true } },
       bookA: true,
       bookB: true,
       boost: true,
@@ -157,7 +157,7 @@ export default async function DashboardPage() {
                           {opp.event.homeTeam}
                         </span>
                         <span className="mt-0.5 text-[10px] text-text-faint">
-                          NBA · Moneyline
+                          {opp.event.sport.title} · Moneyline
                         </span>
                       </div>
                       <BoostBadge type={opp.boostType} compact />

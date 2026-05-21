@@ -13,7 +13,7 @@ export default async function OpportunityPage({
   const opp = await prisma.arbOpp.findUnique({
     where: { id },
     include: {
-      event: true,
+      event: { include: { sport: true } },
       bookA: true,
       bookB: true,
       boost: true,

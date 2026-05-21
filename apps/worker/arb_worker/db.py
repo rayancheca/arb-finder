@@ -17,7 +17,7 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterator
 
 from .config import is_sqlite, sqlite_path
 
@@ -79,6 +79,9 @@ class RawEvent:
     home_team: str
     away_team: str
     commence_time: datetime
+    # Sport this event belongs to. Defaults to NBA for backward compat with
+    # the original single-sport pipeline, but new scrapers and callers should
+    # set this explicitly so the matcher routes to the right canonical table.
     sport_key: str = "basketball_nba"
 
 
@@ -347,15 +350,30 @@ def recent_scrape_runs(
     )
 
 
-def ensure_nba_sport(conn: sqlite3.Connection) -> str:
-    row = conn.execute("SELECT id FROM Sport WHERE key = 'nba'").fetchone()
+def ensure_sport(conn: sqlite3.Connection, key: str, title: str) -> str:
+    """
+    Upsert a Sport row by its `key`, returning the id.
+
+    The id is the key itself (matches the seed convention — `id == key`).
+    Safe to call repeatedly; subsequent calls are pure reads.
+    """
+    row = conn.execute("SELECT id FROM Sport WHERE key = ?", (key,)).fetchone()
     if row:
         return row["id"]
     conn.execute(
         "INSERT INTO Sport (id, key, title) VALUES (?, ?, ?)",
-        ("nba", "nba", "NBA"),
+        (key, key, title),
     )
-    return "nba"
+    return key
+
+
+def ensure_nba_sport(conn: sqlite3.Connection) -> str:
+    """
+    Backward-compat shim — older call sites still ask for the NBA sport
+    without passing a key. New code should call `ensure_sport(conn, key,
+    title)` directly with the explicit sport.
+    """
+    return ensure_sport(conn, "basketball_nba", "NBA")
 
 
 def wipe_arb_opps(conn: sqlite3.Connection) -> None:

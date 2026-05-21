@@ -1,9 +1,13 @@
 """
-FanDuel NBA scraper — SportsBook public JSON.
+FanDuel SportsBook scraper — public content-managed-page JSON.
 
-Endpoint:
+Endpoint shape:
   https://sbapi.ny.sportsbook.fanduel.com/api/content-managed-page
-  ?page=CUSTOM&customPageId=nba&pbHorizontal=false&_ak=FhMFpcPWXMeyZxOx&timezone=America%2FNew_York
+  ?page=CUSTOM&customPageId=<sport>&pbHorizontal=false&_ak=FhMFpcPWXMeyZxOx&timezone=America%2FNew_York
+
+FanDuel uses a single endpoint per league with the league baked into
+`customPageId` — "nba" for the NBA lobby, "nfl" for the NFL lobby. We pick
+that value from `SPORT_CONFIGS` at construction time.
 
 FanDuel wraps everything in attachments:
   attachments.events[eventId] → { name, openDate, runners? }
@@ -27,16 +31,10 @@ from .base import ScrapeResult, ScraperError, SportsbookScraper, get_json, parse
 log = get_logger("scraper.fanduel")
 
 FD_URL = "https://sbapi.ny.sportsbook.fanduel.com/api/content-managed-page"
-FD_PARAMS = {
-    "page": "CUSTOM",
-    "customPageId": "nba",
-    "pbHorizontal": "false",
-    "_ak": "FhMFpcPWXMeyZxOx",
-    "timezone": "America/New_York",
-}
 
 # FanDuel uses SCREAMING_SNAKE_CASE for marketType. The full set for NBA is
 # larger than we care about; we match the 3 specific 2-way markets we arb on.
+# The same names apply across NBA/NFL — FD reuses MONEY_LINE for both.
 FD_MARKET_TYPES: dict[str, str] = {
     "MONEY_LINE": "moneyline",
     "MATCH_ODDS": "moneyline",
@@ -102,8 +100,37 @@ class FanDuelScraper(SportsbookScraper):
     book_key = "fanduel"
     name = "FanDuel"
 
+    # Per-sport endpoint configuration. The `customPageId` parameter is the
+    # only difference between NBA and NFL on FanDuel's lobby endpoint.
+    SPORT_CONFIGS: dict[str, dict[str, str]] = {
+        "basketball_nba": {"customPageId": "nba"},
+        "football_nfl": {"customPageId": "nfl"},
+    }
+
+    def __init__(
+        self,
+        *,
+        sport_key: str = "basketball_nba",
+        timeout: float | None = None,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        if sport_key not in self.SPORT_CONFIGS:
+            raise ValueError(
+                f"FanDuel scraper does not support sport {sport_key!r}; "
+                f"known: {sorted(self.SPORT_CONFIGS)}"
+            )
+        self.sport_key = sport_key
+        self.sport_config = self.SPORT_CONFIGS[sport_key]
+
     async def fetch(self, client: httpx.AsyncClient) -> ScrapeResult:
-        payload, status = await get_json(client, FD_URL, params=FD_PARAMS)
+        params = {
+            "page": "CUSTOM",
+            "pbHorizontal": "false",
+            "_ak": "FhMFpcPWXMeyZxOx",
+            "timezone": "America/New_York",
+            "customPageId": self.sport_config["customPageId"],
+        }
+        payload, status = await get_json(client, FD_URL, params=params)
         result = ScrapeResult(http_status=status)
 
         attachments = payload.get("attachments") or {}
@@ -134,6 +161,7 @@ class FanDuelScraper(SportsbookScraper):
                     home_team=home,
                     away_team=away,
                     commence_time=commence,
+                    sport_key=self.sport_key,
                 )
             )
 
@@ -156,7 +184,11 @@ class FanDuelScraper(SportsbookScraper):
                     else display
                 )
                 if american_raw is None:
-                    american_raw = display.get("americanOdds") if isinstance(display, dict) else None
+                    american_raw = (
+                        display.get("americanOdds")
+                        if isinstance(display, dict)
+                        else None
+                    )
                 american = _parse_american(american_raw)
                 if american is None:
                     continue
@@ -193,9 +225,13 @@ class FanDuelScraper(SportsbookScraper):
 
         log.info(
             "fanduel_fetched",
+            sport=self.sport_key,
             events=len(result.events),
             selections=len(result.selections),
         )
         if not result.events:
-            raise ScraperError("FanDuel returned no events", http_status=status)
+            raise ScraperError(
+                f"FanDuel returned no events for {self.sport_key}",
+                http_status=status,
+            )
         return result

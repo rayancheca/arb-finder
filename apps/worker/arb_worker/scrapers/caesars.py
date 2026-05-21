@@ -28,6 +28,7 @@ CZR_URL = (
     "https://api.americanwagering.com/regions/us/locations/ny/brands/czr/sb/v3/"
     "events/schedule"
 )
+# Back-compat default for legacy callers that may still import this constant.
 CZR_PARAMS = {"league": "basketball_nba"}
 
 
@@ -36,10 +37,32 @@ class CaesarsScraper(SportsbookScraper):
     book_key = "caesars"
     name = "Caesars"
 
+    # Per-sport endpoint configuration. Caesars uses the same schedule URL
+    # for every sport — only the `league` query string changes.
+    SPORT_CONFIGS: dict[str, dict[str, str]] = {
+        "basketball_nba": {"league": "basketball_nba"},
+        "football_nfl": {"league": "american_football_nfl"},
+    }
+
+    def __init__(
+        self,
+        *,
+        sport_key: str = "basketball_nba",
+        timeout: float | None = None,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        if sport_key not in self.SPORT_CONFIGS:
+            raise ValueError(
+                f"Caesars scraper does not support sport {sport_key!r}; "
+                f"known: {sorted(self.SPORT_CONFIGS)}"
+            )
+        self.sport_key = sport_key
+        self.sport_config = self.SPORT_CONFIGS[sport_key]
+
     async def fetch(self, client: httpx.AsyncClient) -> ScrapeResult:
         # Caesars also sits behind a TLS-fingerprint WAF. Same pattern as DK.
         payload, status = await asyncio.to_thread(
-            stealth_get_json, CZR_URL, params=CZR_PARAMS
+            stealth_get_json, CZR_URL, params=self.sport_config
         )
         result = ScrapeResult(http_status=status)
 
@@ -68,6 +91,7 @@ class CaesarsScraper(SportsbookScraper):
                     home_team=home,
                     away_team=away,
                     commence_time=commence,
+                    sport_key=self.sport_key,
                 )
             )
 
@@ -117,9 +141,13 @@ class CaesarsScraper(SportsbookScraper):
 
         log.info(
             "caesars_fetched",
+            sport=self.sport_key,
             events=len(result.events),
             selections=len(result.selections),
         )
         if not result.events:
-            raise ScraperError("Caesars returned no events", http_status=status)
+            raise ScraperError(
+                f"Caesars returned no events for {self.sport_key}",
+                http_status=status,
+            )
         return result

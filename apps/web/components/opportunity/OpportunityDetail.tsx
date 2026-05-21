@@ -48,6 +48,9 @@ interface Props {
       homeTeam: string;
       awayTeam: string;
       commenceTime: Date;
+      sport: {
+        title: string;
+      };
     };
     bookA: BookLite;
     bookB: BookLite;
@@ -106,7 +109,9 @@ export function OpportunityDetail({ opp }: Props) {
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-2 text-[11px] text-text-faint">
-          <span className="uppercase tracking-[0.1em]">NBA · Moneyline</span>
+          <span className="uppercase tracking-[0.1em]">
+            {opp.event.sport.title} · Moneyline
+          </span>
           <span className="h-1 w-1 rounded-full bg-border" />
           <Clock className="h-3 w-3" />
           <span className="mono-num">

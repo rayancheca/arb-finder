@@ -37,14 +37,22 @@ def test_canonical_key_is_order_independent() -> None:
     k1 = build_canonical_key("new york knicks", "boston celtics", commence)
     k2 = build_canonical_key("boston celtics", "new york knicks", commence)
     assert k1 == k2
-    assert k1 == "nba|2026-04-15|boston celtics|new york knicks"
+    # Sport prefix is the full sport key (multi-sport refactor); the
+    # legacy "nba|..." prefix has been replaced by "basketball_nba|...".
+    assert (
+        k1
+        == "basketball_nba|2026-04-15|boston celtics|new york knicks"
+    )
 
 
 def test_resolve_round_trip() -> None:
     commence = datetime(2026, 4, 15, 23, 0, tzinfo=timezone.utc)
     r = resolve("Knicks", "Celtics", commence)
     assert r.matched
-    assert r.canonical_key == "nba|2026-04-15|boston celtics|new york knicks"
+    assert (
+        r.canonical_key
+        == "basketball_nba|2026-04-15|boston celtics|new york knicks"
+    )
 
 
 def test_resolve_reports_failure() -> None:
