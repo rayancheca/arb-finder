@@ -26,6 +26,11 @@ class BookConfig:
     # NBA event group IDs for the JSON-endpoint scrapers.
     dk_event_group: int | None = None
     fd_competition_id: int | None = None
+    # Sports this book's scraper is wired up for. The pipeline will iterate
+    # this tuple and instantiate the scraper once per supported sport. Books
+    # default to NBA-only; flip an entry on by adding "football_nfl" once the
+    # underlying scraper's SPORT_CONFIGS knows the league ID for that book.
+    supported_sports: tuple[str, ...] = ("basketball_nba",)
 
 
 BOOKS: tuple[BookConfig, ...] = (
@@ -40,8 +45,19 @@ BOOKS: tuple[BookConfig, ...] = (
         key="fanduel",
         name="FanDuel",
         fd_competition_id=10547864,  # NBA
+        # FanDuel is fully wired for both NBA and NFL — see FanDuelScraper.
+        supported_sports=("basketball_nba", "football_nfl"),
     ),
-    BookConfig(id="mgm", key="betmgm", name="BetMGM"),
+    BookConfig(
+        id="mgm",
+        key="betmgm",
+        name="BetMGM",
+        # BetMGM NFL still needs its competitionId confirmed via devtools;
+        # the scraper carries a TODO placeholder and will raise ScraperError
+        # until the right ID lands. We still enable the sport here so the
+        # iteration covers it once the placeholder is fixed.
+        supported_sports=("basketball_nba", "football_nfl"),
+    ),
     BookConfig(id="caesars", key="caesars", name="Caesars"),
     BookConfig(id="br", key="betrivers", name="BetRivers"),
     # Phase F — flaky, guarded:

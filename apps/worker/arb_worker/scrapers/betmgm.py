@@ -1,12 +1,14 @@
 """
-BetMGM NBA scraper — the public sports.ny.betmgm.com cds-api.
+BetMGM scraper — the public sports.ny.betmgm.com cds-api.
 
 Primary endpoint (competition-level fixtures + grouped markets):
-  https://sports.ny.betmgm.com/en/sports/api/widget/widgetdata
-  ?layoutSize=Large&page=CompetitionLobby&sportId=7&regionId=9&competitionId=6004
+  https://sports.ny.betmgm.com/cds-api/bettingoffer/fixtures?x-bwin-accessid=...&competitionIds=<id>
 
-And then per-fixture markets:
-  https://sports.ny.betmgm.com/cds-api/bettingoffer/fixtures?x-bwin-accessid=...
+BetMGM's `competitionId` is the league identifier. NBA on BetMGM is `6004`.
+NFL needs to be confirmed from devtools on sports.ny.betmgm.com — we ship a
+placeholder until that lands so the rest of the multi-sport plumbing can be
+exercised, and the scraper raises ScraperError on the placeholder so the
+circuit breaker kicks in instead of silently emitting empty NFL cycles.
 
 BetMGM rotates their access IDs. We read BETMGM_ACCESS_ID from the env and
 fall back to a sentinel that triggers a clean ScraperError with a hint so
@@ -26,8 +28,12 @@ from .base import ScrapeResult, ScraperError, SportsbookScraper, get_json, parse
 log = get_logger("scraper.betmgm")
 
 MGM_FIXTURES_URL = "https://sports.ny.betmgm.com/cds-api/bettingoffer/fixtures"
-MGM_COMPETITION_ID = 6004  # NBA on BetMGM
-MGM_SPORT_ID = 7
+MGM_SPORT_ID = 7  # legacy default; we use competitionId for routing.
+
+# TODO(rayan): confirm NFL competitionId from sports.ny.betmgm.com devtools.
+# `35` is a common-guess placeholder. The scraper will surface this as a
+# ScraperError until the real ID is in.
+_NFL_COMPETITION_ID_PLACEHOLDER = 35
 
 
 class BetMgmScraper(SportsbookScraper):
@@ -35,7 +41,44 @@ class BetMgmScraper(SportsbookScraper):
     book_key = "betmgm"
     name = "BetMGM"
 
+    # Per-sport endpoint configuration. `competition_id` is the only thing
+    # that varies between leagues on the fixtures endpoint.
+    SPORT_CONFIGS: dict[str, dict[str, int | bool]] = {
+        "basketball_nba": {
+            "competition_id": 6004,
+            "needs_confirmation": False,
+        },
+        "football_nfl": {
+            "competition_id": _NFL_COMPETITION_ID_PLACEHOLDER,
+            "needs_confirmation": True,
+        },
+    }
+
+    def __init__(
+        self,
+        *,
+        sport_key: str = "basketball_nba",
+        timeout: float | None = None,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        if sport_key not in self.SPORT_CONFIGS:
+            raise ValueError(
+                f"BetMGM scraper does not support sport {sport_key!r}; "
+                f"known: {sorted(self.SPORT_CONFIGS)}"
+            )
+        self.sport_key = sport_key
+        self.sport_config = self.SPORT_CONFIGS[sport_key]
+
     async def fetch(self, client: httpx.AsyncClient) -> ScrapeResult:
+        # Fail loudly on the placeholder so the circuit breaker can open
+        # rather than us emitting empty NFL cycles for weeks.
+        if self.sport_config.get("needs_confirmation"):
+            raise ScraperError(
+                f"BetMGM {self.sport_key} competitionId is a placeholder "
+                f"({self.sport_config['competition_id']}). Confirm from "
+                "sports.ny.betmgm.com devtools and update SPORT_CONFIGS."
+            )
+
         access_id = os.environ.get("BETMGM_ACCESS_ID", "").strip()
         if not access_id:
             raise ScraperError(
@@ -53,7 +96,7 @@ class BetMgmScraper(SportsbookScraper):
             "scoreboardMode": "Full",
             "fixtureTypes": "Standard",
             "state": "Latest",
-            "competitionIds": str(MGM_COMPETITION_ID),
+            "competitionIds": str(self.sport_config["competition_id"]),
         }
         payload, status = await get_json(client, MGM_FIXTURES_URL, params=params)
         result = ScrapeResult(http_status=status)
@@ -65,11 +108,19 @@ class BetMgmScraper(SportsbookScraper):
                 continue
             participants = fx.get("participants") or []
             home = next(
-                (p.get("name", {}).get("value") for p in participants if p.get("venueRole") == "Home"),
+                (
+                    p.get("name", {}).get("value")
+                    for p in participants
+                    if p.get("venueRole") == "Home"
+                ),
                 None,
             )
             away = next(
-                (p.get("name", {}).get("value") for p in participants if p.get("venueRole") == "Away"),
+                (
+                    p.get("name", {}).get("value")
+                    for p in participants
+                    if p.get("venueRole") == "Away"
+                ),
                 None,
             )
             start = fx.get("startDate")
@@ -86,6 +137,7 @@ class BetMgmScraper(SportsbookScraper):
                     home_team=home,
                     away_team=away,
                     commence_time=commence,
+                    sport_key=self.sport_key,
                 )
             )
 
@@ -113,7 +165,11 @@ class BetMgmScraper(SportsbookScraper):
                     label = (option.get("name") or {}).get("value") or ""
                     label_lower = label.lower()
                     if market_type == "total":
-                        side = "over" if "over" in label_lower or label_lower.startswith("o") else "under"
+                        side = (
+                            "over"
+                            if "over" in label_lower or label_lower.startswith("o")
+                            else "under"
+                        )
                     elif home and home.lower() in label_lower:
                         side = "home"
                     elif away and away.lower() in label_lower:
@@ -126,7 +182,9 @@ class BetMgmScraper(SportsbookScraper):
                             book_key=self.book_key,
                             book_event_id=fx_id,
                             market_type=market_type,
-                            market_line=float(line_value) if line_value is not None else None,
+                            market_line=float(line_value)
+                            if line_value is not None
+                            else None,
                             side=side,
                             label=label,
                             american_odds=american,
@@ -135,9 +193,13 @@ class BetMgmScraper(SportsbookScraper):
 
         log.info(
             "betmgm_fetched",
+            sport=self.sport_key,
             events=len(result.events),
             selections=len(result.selections),
         )
         if not result.events:
-            raise ScraperError("BetMGM returned no fixtures", http_status=status)
+            raise ScraperError(
+                f"BetMGM returned no fixtures for {self.sport_key}",
+                http_status=status,
+            )
         return result

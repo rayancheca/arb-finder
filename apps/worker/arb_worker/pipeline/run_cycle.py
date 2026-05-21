@@ -1,14 +1,18 @@
 """
 End-to-end scrape cycle:
 
-  1. Run every enabled scraper in parallel (asyncio.gather)
-  2. Per book: match events → write selections (in a single transaction)
+  1. Run every enabled (book, sport) pair in parallel (asyncio.gather)
+  2. Per (book, sport): match events → write selections (one transaction)
   3. Recompute ArbOpp across every 2-way market × book pair
-  4. Emit one ScrapeRun row per book for the circuit breaker + UI
+  4. Emit one ScrapeRun row per (book, sport) for the circuit breaker + UI
 
 The cycle is re-entrant: if any step raises, we record a failed ScrapeRun
 and move on. A half-updated Selection table is still consistent because
-every book's writes are wrapped in their own transaction.
+every (book, sport) cycle's writes are wrapped in their own transaction.
+
+We instantiate scrapers as `scraper_cls(sport_key=sport_key)` so a single
+scraper class — keyed by `book_key` in SCRAPER_REGISTRY — handles every
+sport it advertises in its `SPORT_CONFIGS`.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ log = get_logger("pipeline.cycle")
 @dataclass
 class BookCycleReport:
     book_key: str
+    sport_key: str
     status: str
     events_found: int
     selections_found: int
@@ -40,31 +45,67 @@ class BookCycleReport:
     finished_at: datetime
 
 
-async def _run_scraper(book_key: str) -> tuple[str, ScrapeResult | None, str | None, int | None]:
+async def _run_scraper(
+    book_key: str,
+    sport_key: str,
+) -> tuple[str, str, ScrapeResult | None, str | None, int | None]:
+    """Instantiate the scraper for the (book, sport) pair and execute one fetch."""
     scraper_cls = SCRAPER_REGISTRY.get(book_key)
     if scraper_cls is None:
-        return book_key, None, f"no scraper registered for {book_key}", None
-    scraper = scraper_cls()
+        return (
+            book_key,
+            sport_key,
+            None,
+            f"no scraper registered for {book_key}",
+            None,
+        )
+    try:
+        scraper = scraper_cls(sport_key=sport_key)
+    except TypeError:
+        # Older scrapers that haven't been migrated to the (sport_key=)
+        # constructor signature yet. Fall back to the default ctor; the
+        # scraper will operate on its hardcoded sport. We still surface a
+        # mismatch as an error so we don't silently scrape NBA when NFL
+        # was requested.
+        if sport_key != "basketball_nba":
+            return (
+                book_key,
+                sport_key,
+                None,
+                f"{book_key} scraper has not been migrated to multi-sport",
+                None,
+            )
+        scraper = scraper_cls()
+    except ValueError as exc:
+        return (book_key, sport_key, None, str(exc), None)
     try:
         result = await scraper.run()
-        return book_key, result, None, result.http_status
+        return book_key, sport_key, result, None, result.http_status
     except ScraperError as exc:
-        return book_key, None, str(exc), exc.http_status
+        return book_key, sport_key, None, str(exc), exc.http_status
     except Exception as exc:  # noqa: BLE001 — we want to log and continue
-        return book_key, None, f"{type(exc).__name__}: {exc}", None
+        return (
+            book_key,
+            sport_key,
+            None,
+            f"{type(exc).__name__}: {exc}",
+            None,
+        )
 
 
 def _persist(
     conn: sqlite3.Connection,
     *,
     book_key: str,
+    sport_key: str,
     result: ScrapeResult,
 ) -> int:
-    """Persist a single book's scraped events/selections. Returns selection count."""
+    """Persist a single (book, sport) batch. Returns selection count."""
     cfg = BOOKS_BY_KEY[book_key]
     book_id = db.get_book_id_by_key(conn, book_key) or cfg.id
 
-    # Phase A — match every raw event to a canonical Event.
+    # Phase A — match every raw event to a canonical Event, scoped to the
+    # sport being scraped so cross-league aliases never collide.
     event_id_by_book_event: dict[str, str] = {}
     for raw_ev in result.events:
         match = match_or_create_event(
@@ -79,7 +120,9 @@ def _persist(
                 "home": raw_ev.home_team,
                 "away": raw_ev.away_team,
                 "commence": raw_ev.commence_time.isoformat(),
+                "sport_key": raw_ev.sport_key,
             },
+            sport_key=raw_ev.sport_key or sport_key,
         )
         if match.event_id:
             event_id_by_book_event[raw_ev.book_event_id] = match.event_id
@@ -114,17 +157,33 @@ def _persist(
     return selections_written
 
 
+def _enabled_book_sport_pairs() -> list[tuple[str, str]]:
+    """
+    Cross-product of enabled books × the sports each book advertises support
+    for. Skips books that have no registered scraper class.
+    """
+    pairs: list[tuple[str, str]] = []
+    for b in BOOKS:
+        if not b.enabled:
+            continue
+        if b.key not in SCRAPER_REGISTRY:
+            continue
+        for sport_key in b.supported_sports:
+            pairs.append((b.key, sport_key))
+    return pairs
+
+
 async def run_cycle() -> list[BookCycleReport]:
     log.info("cycle_start")
-    enabled = [b for b in BOOKS if b.enabled and b.key in SCRAPER_REGISTRY]
-    tasks = [_run_scraper(b.key) for b in enabled]
+    pairs = _enabled_book_sport_pairs()
+    tasks = [_run_scraper(book_key, sport_key) for book_key, sport_key in pairs]
     scraped = await asyncio.gather(*tasks)
 
     reports: list[BookCycleReport] = []
     now = lambda: datetime.now(timezone.utc)  # noqa: E731
 
     with db.connect() as conn:
-        for book_key, result, error, http_status in scraped:
+        for book_key, sport_key, result, error, http_status in scraped:
             started = now()
             if result is None:
                 db.record_scrape_run(
@@ -139,6 +198,7 @@ async def run_cycle() -> list[BookCycleReport]:
                 reports.append(
                     BookCycleReport(
                         book_key=book_key,
+                        sport_key=sport_key,
                         status="error",
                         events_found=0,
                         selections_found=0,
@@ -152,14 +212,19 @@ async def run_cycle() -> list[BookCycleReport]:
 
             try:
                 with db.transaction(conn):
-                    written = _persist(conn, book_key=book_key, result=result)
+                    written = _persist(
+                        conn,
+                        book_key=book_key,
+                        sport_key=sport_key,
+                        result=result,
+                    )
                 status = "ok"
                 err: str | None = None
             except Exception as exc:  # noqa: BLE001
                 status = "error"
                 err = f"persist failed: {type(exc).__name__}: {exc}"
                 written = 0
-                log.exception("persist_failed", book=book_key)
+                log.exception("persist_failed", book=book_key, sport=sport_key)
 
             finished = now()
             db.record_scrape_run(
@@ -176,6 +241,7 @@ async def run_cycle() -> list[BookCycleReport]:
             reports.append(
                 BookCycleReport(
                     book_key=book_key,
+                    sport_key=sport_key,
                     status=status,
                     events_found=len(result.events),
                     selections_found=written,
@@ -186,7 +252,9 @@ async def run_cycle() -> list[BookCycleReport]:
                 )
             )
 
-        # Phase A5 — always recompute arbs, even if some books failed.
+        # Phase A5 — always recompute arbs, even if some books failed. The
+        # recompute is already sport-agnostic — it operates on every Market
+        # row with future events.
         try:
             with db.transaction(conn):
                 arb_count = recompute_arb_opps(conn)
@@ -196,7 +264,7 @@ async def run_cycle() -> list[BookCycleReport]:
 
     log.info(
         "cycle_done",
-        books=len(reports),
+        pairs=len(reports),
         ok=sum(1 for r in reports if r.status == "ok"),
         errors=sum(1 for r in reports if r.status == "error"),
     )

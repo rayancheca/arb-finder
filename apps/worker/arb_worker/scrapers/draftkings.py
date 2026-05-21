@@ -31,7 +31,12 @@ from .base import (
 
 log = get_logger("scraper.draftkings")
 
-DK_URL = "https://sportsbook.draftkings.com/sites/US-NY-SB/api/v5/eventgroups/42648"
+DK_URL_TEMPLATE = (
+    "https://sportsbook.draftkings.com/sites/US-NY-SB/api/v5/eventgroups/{event_group}"
+)
+# Back-compat alias — preserved so any external test that imports DK_URL still
+# resolves to the NBA URL.
+DK_URL = DK_URL_TEMPLATE.format(event_group=42648)
 
 # DK display-groups we care about for 2-way markets
 MONEYLINE_NAMES = {"moneyline", "game lines"}
@@ -75,16 +80,50 @@ class DraftKingsScraper(SportsbookScraper):
     book_key = "draftkings"
     name = "DraftKings"
 
+    # Per-sport endpoint configuration. NBA is fully wired; NFL has the
+    # right eventGroupId but the full extraction path hasn't been verified
+    # against a live NFL payload yet (this scraper is disabled-in-cloud, so
+    # we ship it half-done — the structure mirrors NBA closely enough that
+    # we expect it to work, but it stays in the disabled set in BOOKS for
+    # now).
+    SPORT_CONFIGS: dict[str, dict[str, int | str]] = {
+        "basketball_nba": {
+            "event_group_id": 42648,
+            "referer_league": "basketball/nba",
+        },
+        "football_nfl": {
+            "event_group_id": 88808,
+            "referer_league": "football/nfl",
+        },
+    }
+
+    def __init__(
+        self,
+        *,
+        sport_key: str = "basketball_nba",
+        timeout: float | None = None,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        if sport_key not in self.SPORT_CONFIGS:
+            raise ValueError(
+                f"DraftKings scraper does not support sport {sport_key!r}; "
+                f"known: {sorted(self.SPORT_CONFIGS)}"
+            )
+        self.sport_key = sport_key
+        self.sport_config = self.SPORT_CONFIGS[sport_key]
+
     async def fetch(self, client: httpx.AsyncClient) -> ScrapeResult:
         # DraftKings sits behind Akamai — vanilla httpx TLS → 403. Route
         # through curl_cffi's Chrome impersonation via a worker thread so we
         # don't block the asyncio loop.
+        url = DK_URL_TEMPLATE.format(event_group=self.sport_config["event_group_id"])
+        referer_league = self.sport_config["referer_league"]
         headers = {
             "Origin": "https://sportsbook.draftkings.com",
-            "Referer": "https://sportsbook.draftkings.com/leagues/basketball/nba",
+            "Referer": f"https://sportsbook.draftkings.com/leagues/{referer_league}",
         }
         payload, status = await asyncio.to_thread(
-            stealth_get_json, DK_URL, headers=headers
+            stealth_get_json, url, headers=headers
         )
         result = ScrapeResult(http_status=status)
 
@@ -107,6 +146,7 @@ class DraftKingsScraper(SportsbookScraper):
                     home_team=ev.get("teamName2") or ev.get("eventMetadata", {}).get("participantMetadata", {}).get("teamName", ""),
                     away_team=ev.get("teamName1") or "",
                     commence_time=commence,
+                    sport_key=self.sport_key,
                 )
             )
 
@@ -168,9 +208,13 @@ class DraftKingsScraper(SportsbookScraper):
 
         log.info(
             "draftkings_fetched",
+            sport=self.sport_key,
             events=len(result.events),
             selections=len(result.selections),
         )
         if not result.events:
-            raise ScraperError("DraftKings returned no events", http_status=status)
+            raise ScraperError(
+                f"DraftKings returned no events for {self.sport_key}",
+                http_status=status,
+            )
         return result

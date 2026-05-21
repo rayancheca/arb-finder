@@ -45,10 +45,19 @@ const NBA_GAMES: Array<{
   { home: "Toronto Raptors", away: "Detroit Pistons", hoursFromNow: 102 },
 ];
 
-function canonicalKey(home: string, away: string, commence: Date): string {
+// Multi-sport canonical key: the prefix is the full sport key
+// ("basketball_nba" / "football_nfl") so NBA and NFL keyspaces are
+// disjoint. The worker (apps/worker/.../canonical.py) writes the same
+// shape — keep these in sync if either changes.
+function canonicalKey(
+  home: string,
+  away: string,
+  commence: Date,
+  sportKey: string = "basketball_nba",
+): string {
   const [a, b] = [home, away].sort();
   const day = commence.toISOString().slice(0, 10);
-  return `nba|${day}|${a}|${b}`;
+  return `${sportKey}|${day}|${a}|${b}`;
 }
 
 /** Randomly perturb an odds line by ±N cents to simulate book disagreement */
@@ -75,9 +84,11 @@ async function main() {
   await prisma.book.deleteMany();
   await prisma.sport.deleteMany();
 
-  // Sports
+  // Sports — keys match the worker's sport_key convention
+  // (`basketball_nba`) so canonical_key prefixes line up across the
+  // seed-only data and live scrapes.
   await prisma.sport.create({
-    data: { id: "nba", key: "nba", title: "NBA" },
+    data: { id: "basketball_nba", key: "basketball_nba", title: "NBA" },
   });
 
   // Books
@@ -105,7 +116,7 @@ async function main() {
     await prisma.event.create({
       data: {
         id: eventId,
-        sportId: "nba",
+        sportId: "basketball_nba",
         homeTeam: g.home,
         awayTeam: g.away,
         commenceTime: commence,

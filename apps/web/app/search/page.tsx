@@ -86,6 +86,7 @@ export default async function SearchPage({
         }
       : undefined,
     include: {
+      sport: true,
       markets: {
         include: {
           selections: {
@@ -176,7 +177,7 @@ export default async function SearchPage({
                     {event.homeTeam}
                   </h3>
                   <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-text-faint">
-                    NBA · Moneyline ·{" "}
+                    {event.sport.title} · Moneyline ·{" "}
                     <span className="normal-case tracking-normal">
                       {formatRelativeTime(event.commenceTime)}
                     </span>
