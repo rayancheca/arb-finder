@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import * as Slider from "@radix-ui/react-slider";
 import {
   ArrowRight,
+  CheckCircle2,
   Clock,
   ExternalLink,
   Shield,
@@ -15,6 +16,7 @@ import {
   arbSiteCredit,
   arbStandard,
 } from "@arb/engine";
+import { recordArbPlacement } from "@/app/opp/actions";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { OddsCell } from "@/components/ui/OddsCell";
 import { BookChip } from "@/components/ui/BookChip";
@@ -96,6 +98,16 @@ export function OpportunityDetail({ opp }: Props) {
   const [boost, setBoost] = useState<BoostOption>(
     opp.boostType as BoostOption,
   );
+  // Tracks the bet-recording lifecycle independently of the URL-open step.
+  // Until the user clicks "Record placement", the per-leg PlaceButtons are
+  // disabled — we don't want a partial flow where the URL opens but no
+  // Bet row ever lands in Postgres (the audit finding this PR closes).
+  const [recordState, setRecordState] = useState<
+    | { status: "idle" }
+    | { status: "recording" }
+    | { status: "recorded"; betIds: readonly [string, string] }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
 
   const result = useMemo(() => {
     switch (boost) {
@@ -258,18 +270,79 @@ export function OpportunityDetail({ opp }: Props) {
       <SurfaceCard
         className="mt-4"
         title="Place trade"
-        subtitle="Deep links open the book's pre-filled slip when supported. Browser extension autofills otherwise."
+        subtitle="Step 1 records the pair to your bet history. Step 2 opens each book's bet slip — extension autofills when installed."
       >
+        <div className="mb-3 flex items-center justify-between rounded-[8px] border border-border bg-surface-sunken px-4 py-3">
+          <div className="flex items-center gap-3">
+            {recordState.status === "recorded" ? (
+              <CheckCircle2 className="h-4 w-4 text-profit" />
+            ) : (
+              <span className="mono-num inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-bg text-[10px] font-semibold text-text-dim">
+                1
+              </span>
+            )}
+            <div>
+              <div className="text-[12px] font-semibold text-text">
+                {recordState.status === "recorded"
+                  ? "Pair recorded — both legs pending settlement"
+                  : "Record both legs to your bet history"}
+              </div>
+              <div className="mono-num mt-0.5 text-[10px] text-text-faint">
+                {recordState.status === "recorded"
+                  ? "Settle from Bankroll when the game finishes"
+                  : "Writes 2 Bet rows in one transaction, then opens the books"}
+              </div>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            size="md"
+            disabled={
+              recordState.status === "recording" ||
+              recordState.status === "recorded"
+            }
+            onClick={async () => {
+              setRecordState({ status: "recording" });
+              const res = await recordArbPlacement({
+                arbOppId: opp.id,
+                totalStake: bankrollA,
+              });
+              if (res.ok) {
+                setRecordState({ status: "recorded", betIds: res.betIds });
+              } else {
+                setRecordState({ status: "error", message: res.error });
+              }
+            }}
+          >
+            {recordState.status === "recording"
+              ? "Recording…"
+              : recordState.status === "recorded"
+                ? "Recorded"
+                : "Record placement"}
+          </Button>
+        </div>
+
+        {recordState.status === "error" && (
+          <div
+            role="alert"
+            className="mb-3 rounded-[7px] border border-loss/35 bg-loss-bg px-3 py-2 text-[11px] text-loss"
+          >
+            {recordState.message}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <PlaceButton
             book={opp.bookA}
             stake={result.legA.stake}
             sideLabel={opp.sideALabel}
+            disabled={recordState.status !== "recorded"}
           />
           <PlaceButton
             book={opp.bookB}
             stake={result.legB.stake}
             sideLabel={opp.sideBLabel}
+            disabled={recordState.status !== "recorded"}
           />
         </div>
         <div className="mt-4 flex items-start gap-2 rounded-[7px] border border-border bg-surface-sunken px-3 py-2.5 text-[11px] text-text-dim">
@@ -365,12 +438,15 @@ function PlaceButton({
   book,
   stake,
   sideLabel,
+  disabled = false,
 }: {
   book: BookLite;
   stake: number;
   sideLabel: string;
+  disabled?: boolean;
 }) {
   async function handleClick() {
+    if (disabled) return;
     const deepLink = buildDeepLink({
       bookKey: book.key,
       selectionId: sideLabel,
@@ -423,7 +499,15 @@ function PlaceButton({
   return (
     <button
       onClick={handleClick}
-      className="group flex items-center justify-between rounded-[9px] border border-border bg-surface-sunken px-4 py-3.5 transition-colors hover:border-accent/50 hover:bg-accent-bg"
+      disabled={disabled}
+      aria-disabled={disabled}
+      title={disabled ? "Record placement first" : undefined}
+      className={cn(
+        "group flex items-center justify-between rounded-[9px] border border-border bg-surface-sunken px-4 py-3.5 transition-colors",
+        disabled
+          ? "cursor-not-allowed opacity-40"
+          : "hover:border-accent/50 hover:bg-accent-bg",
+      )}
     >
       <div className="flex items-center gap-2.5">
         <span

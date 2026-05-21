@@ -7,10 +7,20 @@ import {
   arbNoSweat,
   arbStandard,
 } from "@arb/engine";
+import { importExcelHistory } from "@/lib/excel-import";
 
 interface ActionResult {
   readonly ok: boolean;
   readonly message: string;
+}
+
+interface ImportResult {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly imported?: number;
+  readonly firstPlacedAt?: string;
+  readonly lastPlacedAt?: string;
+  readonly warnings?: ReadonlyArray<string>;
 }
 
 function newId(prefix: string): string {
@@ -241,4 +251,156 @@ export async function recomputeArbs(): Promise<ActionResult> {
       message: err instanceof Error ? err.message : "Unknown error",
     };
   }
+}
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB — workbook ceiling
+
+/**
+ * Import historical bets from Rayan's "sportbook calculator" Excel workbook.
+ *
+ * Reads the uploaded file via `importExcelHistory` (apps/web/lib/excel-import.ts),
+ * maps each parsed `BetInput` to a `Bet` row, and persists them in a single
+ * transaction so partial failures roll back cleanly. Bets are matched to
+ * books by the parser's normalized `bookKey` against `Book.key`; rows whose
+ * book cannot be resolved are skipped and reported in the warning list.
+ *
+ * Note: imported bets are NOT linked to Event / Market because the workbook
+ * is leg-level only — it has no canonical event ID. The analytics tab still
+ * shows them via Book / boost / placedAt aggregations.
+ */
+export async function importExcelBets(
+  formData: FormData,
+): Promise<ImportResult> {
+  try {
+    const file = formData.get("file");
+    if (!(file instanceof File)) {
+      return { ok: false, message: "No file uploaded" };
+    }
+    if (file.size === 0) {
+      return { ok: false, message: "Uploaded file is empty" };
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return {
+        ok: false,
+        message: `File exceeds ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB limit`,
+      };
+    }
+
+    const buffer = await file.arrayBuffer();
+    const summary = await importExcelHistory(buffer);
+    if (summary.bets.length === 0) {
+      return {
+        ok: false,
+        message:
+          summary.warnings[0] ??
+          "No bet rows parsed from the workbook. Check that a profit-tracker sheet exists.",
+        warnings: summary.warnings,
+      };
+    }
+
+    // Resolve bookKey → bookId once up-front.
+    const books = await prisma.book.findMany({
+      select: { id: true, key: true },
+    });
+    const bookKeyToId = new Map(books.map((b) => [b.key, b.id]));
+
+    const warnings: string[] = [...summary.warnings];
+    const rows: {
+      id: string;
+      bookId: string;
+      side: string;
+      label: string;
+      americanOdds: number;
+      stake: number;
+      result: string;
+      payout: number;
+      profit: number;
+      boostType: string;
+      placedAt: Date;
+      settledAt: Date | null;
+    }[] = [];
+
+    let skippedNoBook = 0;
+    for (const bet of summary.bets) {
+      const bookId = bookKeyToId.get(bet.bookKey);
+      if (!bookId) {
+        skippedNoBook++;
+        continue;
+      }
+
+      // Derive payout from result + odds + stake when the workbook only
+      // recorded profit. Keeps analytics-tab math consistent with bets
+      // that came in via recordArbPlacement.
+      const decimal = americanToDecimal(bet.americanOdds);
+      let payout = 0;
+      if (bet.result === "won") payout = round2(bet.stake * decimal);
+      else if (bet.result === "void" || bet.result === "cashed")
+        payout = round2(bet.stake + bet.profit);
+
+      rows.push({
+        id: crypto.randomUUID(),
+        bookId,
+        side: bet.side ?? "imported",
+        label: bet.eventLabel ?? "Imported from workbook",
+        americanOdds: bet.americanOdds,
+        stake: bet.stake,
+        result: bet.result,
+        payout,
+        profit: round2(bet.profit),
+        boostType: bet.boostType,
+        placedAt: bet.placedAt,
+        // Imported bets are historical → already settled. Pending rows
+        // are skipped from settling automatically.
+        settledAt: bet.result === "pending" ? null : bet.placedAt,
+      });
+    }
+
+    if (skippedNoBook > 0) {
+      warnings.push(
+        `Skipped ${skippedNoBook} row(s) with unrecognized book name.`,
+      );
+    }
+
+    if (rows.length === 0) {
+      return {
+        ok: false,
+        message: "No bets could be matched to a known book.",
+        warnings,
+      };
+    }
+
+    // Single transaction so a mid-import error leaves the DB untouched.
+    await prisma.$transaction([prisma.bet.createMany({ data: rows })]);
+
+    const placedDates = rows
+      .map((r) => r.placedAt.getTime())
+      .sort((a, b) => a - b);
+    const first = new Date(placedDates[0]!);
+    const last = new Date(placedDates[placedDates.length - 1]!);
+
+    revalidatePath("/analytics");
+    revalidatePath("/bankroll");
+
+    return {
+      ok: true,
+      imported: rows.length,
+      firstPlacedAt: first.toISOString(),
+      lastPlacedAt: last.toISOString(),
+      message: `Imported ${rows.length} bet(s) spanning ${first.toLocaleDateString()} → ${last.toLocaleDateString()}.`,
+      warnings,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : "Unknown import error",
+    };
+  }
+}
+
+function americanToDecimal(odds: number): number {
+  return odds >= 0 ? 1 + odds / 100 : 1 + 100 / Math.abs(odds);
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }

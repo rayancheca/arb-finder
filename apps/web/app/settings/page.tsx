@@ -5,6 +5,7 @@ import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { SettingsActions } from "@/components/settings/SettingsActions";
 import { DataControls } from "@/components/settings/DataControls";
+import { ExcelImport } from "@/components/settings/ExcelImport";
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
 
 export const dynamic = "force-dynamic";
@@ -144,6 +145,14 @@ export default async function SettingsPage() {
           className="lg:col-span-2"
         >
           <DataControls />
+        </SurfaceCard>
+
+        <SurfaceCard
+          title="Historical backfill"
+          subtitle="One-shot Excel import for the legacy sportbook calculator workbook"
+          className="lg:col-span-2"
+        >
+          <ExcelImport />
         </SurfaceCard>
       </div>
     </div>
