@@ -7,16 +7,12 @@ interface SettingsState {
   slippageBufferCents: number;
   kellyFraction: number; // 0..1 (¼=0.25, ½=0.5, full=1)
   minNetReturnPct: number;
-  webhookSlackUrl: string;
-  webhookDiscordUrl: string;
 }
 
 const DEFAULT: SettingsState = {
   slippageBufferCents: 3,
   kellyFraction: 0.25,
   minNetReturnPct: 0.01,
-  webhookSlackUrl: "",
-  webhookDiscordUrl: "",
 };
 
 const STORAGE_KEY = "arb-finder:settings:v1";
@@ -26,7 +22,18 @@ function loadSettings(): SettingsState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT;
-    return { ...DEFAULT, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw) as Partial<SettingsState> & {
+      webhookSlackUrl?: unknown;
+      webhookDiscordUrl?: unknown;
+    };
+    // Drop any legacy webhook fields that may still be persisted in
+    // localStorage from a prior version. Webhooks are env-only now.
+    const {
+      webhookSlackUrl: _legacySlack,
+      webhookDiscordUrl: _legacyDiscord,
+      ...safe
+    } = parsed;
+    return { ...DEFAULT, ...safe };
   } catch {
     return DEFAULT;
   }
@@ -114,20 +121,13 @@ export function SettingsActions() {
         <div className="text-[10px] uppercase tracking-[0.08em] text-text-dim">
           Notification webhooks
         </div>
-        <input
-          type="url"
-          placeholder="Slack webhook URL"
-          value={state.webhookSlackUrl}
-          onChange={(e) => update("webhookSlackUrl", e.target.value)}
-          className="mono-num rounded-md border border-border bg-surface-raised px-2 py-1.5 text-[11px]"
-        />
-        <input
-          type="url"
-          placeholder="Discord webhook URL"
-          value={state.webhookDiscordUrl}
-          onChange={(e) => update("webhookDiscordUrl", e.target.value)}
-          className="mono-num rounded-md border border-border bg-surface-raised px-2 py-1.5 text-[11px]"
-        />
+        <p className="text-[11px] leading-relaxed text-text-faint">
+          Webhook URLs are configured via{" "}
+          <code className="mono-num text-text-dim">SLACK_WEBHOOK_URL</code> /{" "}
+          <code className="mono-num text-text-dim">DISCORD_WEBHOOK_URL</code>{" "}
+          env vars on the worker. They are no longer stored in the browser —
+          full URLs contain a secret and must not live in localStorage.
+        </p>
       </div>
 
       <div className="mt-2 flex items-center justify-between border-t border-border pt-4">

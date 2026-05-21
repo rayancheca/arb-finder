@@ -14,7 +14,7 @@ interface ActionResult {
 }
 
 function newId(prefix: string): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 14)}`;
+  return `${prefix}_${crypto.randomUUID()}`;
 }
 
 /**

@@ -74,7 +74,7 @@ function flattenErrors(
 }
 
 function newBoostId(): string {
-  return `boost_${Math.random().toString(36).slice(2, 14)}`;
+  return `boost_${crypto.randomUUID()}`;
 }
 
 export async function createBoost(formData: FormData): Promise<ActionResult> {

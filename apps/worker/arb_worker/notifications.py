@@ -105,16 +105,20 @@ def _post_json(url: str, payload: dict) -> None:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    # Webhook URLs contain a secret token in the path. Only log the
+    # non-secret prefix so log aggregators / shared error reports can't
+    # leak the full URL.
+    redacted = url[:40] + "..."
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             if resp.status >= 400:
                 log.warning(
                     "webhook_non_ok",
-                    url=url,
+                    url=redacted,
                     status=resp.status,
                 )
     except Exception as exc:  # noqa: BLE001 — fire-and-forget
-        log.warning("webhook_failed", url=url, error=str(exc))
+        log.warning("webhook_failed", url=redacted, error=str(exc))
 
 
 def notify_opportunities(opps: list[NotifiableOpp]) -> None:
