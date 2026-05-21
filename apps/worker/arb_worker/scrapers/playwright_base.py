@@ -18,10 +18,8 @@ from __future__ import annotations
 import asyncio
 import random
 from dataclasses import dataclass
-from pathlib import Path
 
 from ..config import REPO_ROOT
-from ..db import RawEvent, RawSelection
 from ..logging_setup import get_logger
 from .base import ScrapeResult, ScraperError, SportsbookScraper
 

@@ -22,7 +22,6 @@ from .. import db
 from ..config import FUZZY_MATCH_WINDOW_MINUTES
 from ..logging_setup import get_logger
 from .canonical import (
-    build_canonical_key,
     normalize,
     resolve,
 )

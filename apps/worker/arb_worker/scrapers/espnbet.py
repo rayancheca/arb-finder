@@ -9,7 +9,6 @@ Playwright with a persistent profile is cleaner.
 
 from __future__ import annotations
 
-from ..db import RawEvent, RawSelection
 from ..logging_setup import get_logger
 from .base import ScrapeResult, ScraperError
 from .playwright_base import PlaywrightScraper
