@@ -39,21 +39,30 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log("[arb-finder] extension installed");
 });
 
-chrome.runtime.onMessage.addListener(
-  (message: unknown, _sender, sendResponse) => {
-    if (!isFillRequest(message)) {
-      sendResponse({ ok: false, error: "Unknown message type" });
-      return false;
-    }
-    handleFillRequest(message)
-      .then((result) => sendResponse(result))
-      .catch((err) =>
-        sendResponse({ ok: false, error: (err as Error).message }),
-      );
-    // Return true to keep the message channel open for async response.
-    return true;
-  },
-);
+function messageListener(
+  message: unknown,
+  _sender: chrome.runtime.MessageSender,
+  sendResponse: (response: { ok: boolean; error?: string }) => void,
+): boolean {
+  console.log("[arb-finder] received fill-betslip message", message);
+  if (!isFillRequest(message)) {
+    sendResponse({ ok: false, error: "Unknown message type" });
+    return false;
+  }
+  handleFillRequest(message)
+    .then((result) => sendResponse(result))
+    .catch((err) =>
+      sendResponse({ ok: false, error: (err as Error).message }),
+    );
+  // Return true to keep the message channel open for async response.
+  return true;
+}
+
+// Same-extension messages (popup, content scripts).
+chrome.runtime.onMessage.addListener(messageListener);
+// Cross-origin messages from the web app — requires `externally_connectable`
+// in manifest.json. This is the path the place-trade button uses.
+chrome.runtime.onMessageExternal.addListener(messageListener);
 
 function isFillRequest(msg: unknown): msg is FillRequest {
   return (
