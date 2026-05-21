@@ -67,6 +67,19 @@ railway variables set BETMGM_ACCESS_ID='...'
 railway variables set ARB_POLL_INTERVAL_SECONDS=300
 ```
 
+**Monitoring:** Set `HEALTHCHECKS_URL`, `PUSHOVER_TOKEN`, `PUSHOVER_USER` via
+`railway variables set …` before deploying. See
+[https://healthchecks.io](https://healthchecks.io) and
+[https://pushover.net](https://pushover.net) for credentials. Configure the
+Healthchecks.io check grace period to 6 minutes so a single missed 5-minute
+tick doesn't false-positive.
+
+```bash
+railway variables set HEALTHCHECKS_URL='https://hc-ping.com/<uuid>'
+railway variables set PUSHOVER_TOKEN='...'
+railway variables set PUSHOVER_USER='...'
+```
+
 Railway picks up the `Dockerfile` automatically. The worker runs
 `python -m arb_worker run` on startup and APScheduler handles the cadence.
 

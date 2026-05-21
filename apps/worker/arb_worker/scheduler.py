@@ -11,11 +11,14 @@ for 12 more minutes".
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from . import db
+from .alerts import send_pushover
 from .config import (
     CIRCUIT_BASE_COOLDOWN_SECONDS,
     MAX_CONSECUTIVE_FAILURES,
@@ -25,6 +28,30 @@ from .logging_setup import get_logger
 from .pipeline.run_cycle import run_cycle
 
 log = get_logger("scheduler")
+
+# Dead-man counter: number of consecutive ticks where every book reported
+# status=="error". After 3 such ticks (~15 minutes at default cadence) we
+# wake the user with a priority-2 Pushover alert. Reset on any ok book.
+_ALL_FAILED_STREAK_THRESHOLD = 3
+_all_failed_streak = 0
+
+
+def _ping_healthcheck(state: str) -> None:
+    """Heartbeat Healthchecks.io.
+
+    `state` is "ok", "fail", or anything else (treated as a plain ping).
+    Silent no-op when HEALTHCHECKS_URL is unset (dev). Any error is
+    swallowed — a missed heartbeat must never crash the tick.
+    """
+    base = os.environ.get("HEALTHCHECKS_URL", "").strip()
+    if not base:
+        return
+    url = f"{base}/{state}" if state in ("ok", "fail") else base
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            client.post(url)
+    except Exception as exc:  # noqa: BLE001 — fire-and-forget heartbeat
+        log.debug("healthcheck_ping_failed", state=state, error=str(exc))
 
 
 def _cooldown_seconds(consecutive_failures: int) -> int:
@@ -85,10 +112,34 @@ def should_skip(book_key: str) -> tuple[bool, str | None]:
 
 async def tick() -> None:
     """One scheduler tick — runs the full cycle."""
+    global _all_failed_streak
     try:
-        await run_cycle()
+        reports = await run_cycle()
+        # Dead-man counter: bump only when every book in the cycle errored.
+        # Any ok book resets the streak. An empty report list (no enabled
+        # scrapers) is treated as "nothing happened" — we don't bump.
+        if reports and all(r.status == "error" for r in reports):
+            _all_failed_streak += 1
+            log.warning(
+                "all_books_failed_tick",
+                streak=_all_failed_streak,
+                threshold=_ALL_FAILED_STREAK_THRESHOLD,
+            )
+            if _all_failed_streak >= _ALL_FAILED_STREAK_THRESHOLD:
+                send_pushover(
+                    "All scrapers failed for 3 consecutive ticks (~15min)",
+                    priority=2,
+                    title="arb-finder DEAD",
+                )
+        elif reports:
+            if _all_failed_streak:
+                log.info("all_books_failed_streak_reset", prior=_all_failed_streak)
+            _all_failed_streak = 0
+        # Heartbeat to Healthchecks.io — only on success.
+        _ping_healthcheck("ok")
     except Exception:
         log.exception("tick_failed")
+        _ping_healthcheck("fail")
 
 
 async def _scheduler_main() -> None:

@@ -231,3 +231,11 @@ model BankrollEntry {
 
   @@index([bookId, snappedAt])
 }
+
+// Throwaway rows used by the /api/health probe to verify the database is
+// writable end-to-end. Rows are inserted then immediately deleted by the
+// route — no row should ever persist longer than a single request.
+model HealthProbe {
+  id        String   @id
+  checkedAt DateTime @default(now())
+}
